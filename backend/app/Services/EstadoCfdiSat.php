@@ -25,6 +25,9 @@ class EstadoCfdiSat
 
     public const NO_ENCONTRADO = 'No Encontrado';
 
+    /** Por qué la última consulta devolvió null (para el mensaje al usuario). */
+    public ?string $motivo = null;
+
     /**
      * Devuelve el estado o null si el SAT no respondió (servicio caído, sin internet): quien llama decide
      * dejar continuar.
@@ -33,6 +36,7 @@ class EstadoCfdiSat
      */
     public function consultar(string $rfcEmisor, string $rfcReceptor, float $total, string $uuid, ?string $sello = null): ?array
     {
+        $this->motivo = 'El SAT no respondió; intenta más tarde.';
         $expresion = $this->expresion($rfcEmisor, $rfcReceptor, $total, $uuid, $sello);
         $sobre = '<?xml version="1.0" encoding="utf-8"?>'
             .'<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tem="http://tempuri.org/">'
@@ -52,7 +56,19 @@ class EstadoCfdiSat
                 return null;
             }
 
-            return $this->leerRespuesta($respuesta->body());
+            $estado = $this->leerRespuesta($respuesta->body());
+
+            // "N - 601: La expresión impresa proporcionada no es válida": faltó un dato (RFC, total, UUID). El SAT
+            // lo responde con Estado "No Encontrado", pero no significa que la factura no exista: no se registra.
+            // ("N - 602: Comprobante no encontrado" sí es una factura que el SAT no tiene y se queda como tal.)
+            if ($estado && str_starts_with((string) $estado['codigo'], 'N - 601')) {
+                Log::warning("Consulta de CFDI {$uuid} al SAT: {$estado['codigo']} (expresión {$expresion})");
+                $this->motivo = "No se pudo verificar la factura {$uuid} en el SAT: faltan o no coinciden sus datos (RFC emisor, RFC receptor o total). Respuesta del SAT: {$estado['codigo']}";
+
+                return null;
+            }
+
+            return $estado;
         } catch (Throwable $e) {
             Log::warning("Consulta de CFDI {$uuid} al SAT falló: {$e->getMessage()}");
 
@@ -72,7 +88,8 @@ class EstadoCfdiSat
 
         return $this->consultar(
             $orden->xml_rfc_emisor ?? '',
-            $xml['rfc_receptor'] ?? '',
+            // Sin el XML guardado (base de SIEG sin sus archivos), el receptor es el Ayuntamiento.
+            ($xml['rfc_receptor'] ?? null) ?: (string) config('services.sat.rfc_receptor'),
             (float) $orden->xml_total,
             $orden->xml_uuid,
             $xml['sello'] ?? null,

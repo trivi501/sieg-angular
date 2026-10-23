@@ -28,6 +28,12 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    // Verificación de CFDI en el SAT: RFC del receptor (el Ayuntamiento) para cuando no está el XML guardado
+    // de una factura (p. ej. una base de SIEG sin sus archivos). Sin él, el SAT responde "expresión no válida".
+    'sat' => [
+        'rfc_receptor' => env('SAT_RFC_RECEPTOR', 'MGU6501015R2'),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),

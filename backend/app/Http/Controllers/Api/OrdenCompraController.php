@@ -290,7 +290,7 @@ class OrdenCompraController extends Controller
         // respuesta del SAT no se guarda.
         $sat = $estadoSat->consultar($cfdi['rfc_emisor'] ?? '', $xml['rfc_receptor'] ?? '', $cfdi['total'], $cfdi['uuid'], $xml['sello']);
         if (! $sat) {
-            throw ValidationException::withMessages(['xml' => 'No se pudo verificar la factura en el SAT (el servicio no respondió), así que no se guardó. Intenta de nuevo en unos minutos.']);
+            throw ValidationException::withMessages(['xml' => ($estadoSat->motivo ?? 'No se pudo verificar la factura en el SAT.').' La factura no se guardó.']);
         }
         if ($error = EstadoCfdiSat::error($sat, $cfdi['uuid'])) {
             throw ValidationException::withMessages(['xml' => $error]);
@@ -332,7 +332,7 @@ class OrdenCompraController extends Controller
 
         $sat = $estadoSat->consultarOrden($ordenCompra);
         if (! $sat) {
-            return $this->error('El SAT no respondió; intenta más tarde.');
+            return $this->error($estadoSat->motivo ?? 'El SAT no respondió; intenta más tarde.');
         }
 
         $anterior = $ordenCompra->sat_estado;
