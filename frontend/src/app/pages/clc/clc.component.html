@@ -1,0 +1,301 @@
+<div class="mb-3">
+  <h4 class="mb-1">Trámite de CLC</h4>
+  <p class="text-muted small mb-0">
+    La CLC física recorre las áreas antes del pago: área → Recursos Materiales → Control Presupuestal → Sindicatura → Control Presupuestal (firmada) →
+    Egresos. Marca las que recibes; las que no marques siguen pendientes.
+  </p>
+</div>
+
+@if (mensaje(); as m) {
+  <div class="alert alert-{{ m.tipo }} alert-dismissible py-2 d-flex flex-wrap align-items-center gap-2">
+    {{ m.texto }}
+    @if (ultimaRelacion(); as r) {
+      <button type="button" class="btn btn-sm btn-outline-dark" appAccion="Imprimir relación {{ r.folio }}" icono="printer" (click)="relacionPdf(r.id, r.folio)"></button>
+    }
+    <button type="button" class="btn-close" (click)="mensaje.set(null); ultimaRelacion.set(null)"></button>
+  </div>
+}
+
+@if (datos(); as d) {
+  <ul class="nav nav-tabs mb-3">
+    @for (p of pestanas(); track p.clave) {
+      <li class="nav-item">
+        <button type="button" class="nav-link" [class.active]="pestana() === p.clave" (click)="pestana.set(p.clave)">
+          {{ p.titulo }}
+          @if (p.clave !== 'seguimiento' && p.clave !== 'relaciones' && totalBandeja(p.clave) > 0) {
+            <span class="badge bg-primary ms-1">{{ totalBandeja(p.clave) }}</span>
+          }
+        </button>
+      </li>
+    }
+  </ul>
+
+  @if (pestana() !== 'relaciones') {
+    <div class="d-flex flex-wrap gap-2 mb-3">
+      <input class="form-control form-control-sm" style="max-width: 360px" placeholder="Buscar CLC, orden, requisición, proveedor o área" [ngModel]="buscar()" (ngModelChange)="buscar.set($event)" />
+      @if (pestana() === 'seguimiento') {
+        <select class="form-select form-select-sm w-auto" [ngModel]="filtroEstado()" (ngModelChange)="filtroEstado.set($event)">
+          <option value="">Todos los estados</option>
+          @for (e of d.estados | keyvalue: sinOrden; track e.key) {
+            <option [value]="e.key">{{ e.value }}</option>
+          }
+        </select>
+      }
+    </div>
+  }
+
+  <!-- Bandeja del área -->
+  @if (bandeja(); as b) {
+    @for (g of b.grupos; track g.titulo) {
+      @let clcs = clcsDe(g);
+      <div class="card">
+        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+          <h6 class="mb-0">{{ g.titulo }} <span class="badge bg-light-secondary text-secondary">{{ clcs.length }}</span></h6>
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            @if (elegidos(g).length) {
+              <small class="text-muted">{{ elegidos(g).length }} seleccionada(s) · {{ money(totalSeleccion(g)) }}</small>
+            }
+            @for (a of g.acciones; track a) {
+              @if (puede(a)) {
+                <button
+                  type="button"
+                  class="btn btn-sm"
+                  [class.btn-primary]="!d.acciones[a].observaciones"
+                  [class.btn-outline-danger]="d.acciones[a].observaciones"
+                  [disabled]="!elegidos(g).length"
+                  (click)="abrir(a, g)"
+                >
+                  {{ d.acciones[a].etiqueta }}
+                </button>
+              }
+            }
+          </div>
+        </div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+              <thead>
+                <tr>
+                  <th style="width: 32px">
+                    <input type="checkbox" class="form-check-input" [checked]="todasMarcadas(g)" [disabled]="!clcs.length" (change)="alternarTodas(g, $any($event.target).checked)" />
+                  </th>
+                  <th>CLC</th>
+                  <th>Requisición / orden</th>
+                  <th>Área</th>
+                  <th>Proveedor</th>
+                  <th class="text-end">A pagar</th>
+                  <th>Estado</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (c of clcs; track c.id) {
+                  <tr>
+                    <td><input type="checkbox" class="form-check-input" [checked]="marcado(g, c.id)" (change)="alternar(g, c.id, $any($event.target).checked)" /></td>
+                    <td class="fw-semibold text-nowrap">
+                      {{ c.clc }}
+                      <small class="d-block text-muted fw-normal">{{ c.clc_fecha | date: 'dd/MM/yyyy' }}</small>
+                    </td>
+                    <td class="text-nowrap">
+                      <a [routerLink]="['/requisiciones', c.requisicion_id]">{{ c.requisicion }}</a>
+                      <small class="d-block text-muted">{{ c.orden }}</small>
+                    </td>
+                    <td class="concepto" [title]="c.unidad ?? ''">{{ c.unidad }}</td>
+                    <td class="concepto" [title]="c.proveedor ?? ''">{{ c.proveedor }}</td>
+                    <td class="text-end font-monospace">
+                      {{ money(c.neto) }}
+                      @if (c.isr > 0) {
+                        <small class="d-block text-muted">ISR {{ money(c.isr) }}</small>
+                      }
+                    </td>
+                    <td>
+                      <span class="badge {{ claseEstado(c.estado) }}">{{ c.estado_texto }}</span>
+                      @if (c.relacion) {
+                        <small class="d-block text-muted">{{ c.relacion }}</small>
+                      }
+                      @if (c.devolucion) {
+                        <small class="d-block text-danger">Devuelta: {{ c.devolucion }}</small>
+                      }
+                      @if (c.sat_estado && c.sat_estado !== 'Vigente') {
+                        <span class="badge bg-danger d-block mt-1">SAT: {{ c.sat_estado }}</span>
+                      }
+                      @if (c.sat_efos) {
+                        <span class="badge bg-danger d-block mt-1">Emisor EFOS</span>
+                      }
+                    </td>
+                    <td><button type="button" class="btn btn-sm btn-outline-secondary" (click)="clcPdf(c)" appAccion="PDF de la CLC" icono="file-pdf"></button></td>
+                  </tr>
+                } @empty {
+                  <tr>
+                    <td colspan="8" class="text-center text-muted py-3">Sin CLC en este paso.</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    }
+  }
+
+  <!-- Seguimiento -->
+  @if (pestana() === 'seguimiento') {
+    <div class="card">
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead>
+              <tr>
+                <th>CLC</th>
+                <th>Requisición / orden</th>
+                <th>Área</th>
+                <th>Proveedor</th>
+                <th class="text-end">A pagar</th>
+                <th>Estado</th>
+                <th>Pago</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (c of seguimiento(); track c.id) {
+                <tr>
+                  <td class="fw-semibold text-nowrap">{{ c.clc }}<small class="d-block text-muted fw-normal">{{ c.clc_fecha | date: 'dd/MM/yyyy' }}</small></td>
+                  <td class="text-nowrap"><a [routerLink]="['/requisiciones', c.requisicion_id]">{{ c.requisicion }}</a><small class="d-block text-muted">{{ c.orden }}</small></td>
+                  <td class="concepto" [title]="c.unidad ?? ''">{{ c.unidad }}</td>
+                  <td class="concepto" [title]="c.proveedor ?? ''">{{ c.proveedor }}</td>
+                  <td class="text-end font-monospace">{{ money(c.neto) }}</td>
+                  <td>
+                    <span class="badge {{ claseEstado(c.estado) }}">{{ c.estado_texto }}</span>
+                    @if (c.cancelacion) {
+                      <small class="d-block text-muted">{{ c.cancelacion }}</small>
+                    }
+                  </td>
+                  <td class="small text-nowrap">
+                    @if (c.pago_fecha) {
+                      {{ c.pago_fecha | date: 'dd/MM/yyyy' }}
+                      <span class="d-block text-muted">{{ c.transferencia ?? c.pago_forma }}</span>
+                    } @else {
+                      —
+                    }
+                  </td>
+                  <td>
+                    @if (c.estado !== 'cancelada') {
+                      <button type="button" class="btn btn-sm btn-outline-secondary" (click)="clcPdf(c)" appAccion="PDF de la CLC" icono="file-pdf"></button>
+                    }
+                  </td>
+                </tr>
+              } @empty {
+                <tr>
+                  <td colspan="8" class="text-center text-muted py-3">Sin CLC.</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- Relaciones -->
+  @if (pestana() === 'relaciones') {
+    <div class="card">
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Relación</th>
+                <th>De</th>
+                <th>A</th>
+                <th class="text-center">CLC</th>
+                <th>Envió</th>
+                <th>Fecha</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (r of d.relaciones; track r.id) {
+                <tr>
+                  <td class="fw-semibold">{{ r.folio }}</td>
+                  <td>{{ r.origen }}</td>
+                  <td>{{ r.destino }}</td>
+                  <td class="text-center">{{ r.clcs }}</td>
+                  <td>{{ r.usuario }}</td>
+                  <td>{{ r.fecha | date: 'dd/MM/yyyy HH:mm' }}</td>
+                  <td><button type="button" class="btn btn-sm btn-outline-secondary" (click)="relacionPdf(r.id, r.folio)" appAccion="Imprimir relación" icono="printer"></button></td>
+                </tr>
+              } @empty {
+                <tr>
+                  <td colspan="7" class="text-center text-muted py-3">Sin relaciones.</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  }
+} @else {
+  <p class="text-muted">Cargando…</p>
+}
+
+<ng-template #accionTpl let-modal>
+  @if (accion(); as a) {
+    @let config = datos()!.acciones[a.clave];
+    <div class="modal-header">
+      <h5 class="modal-title">{{ config.etiqueta }}</h5>
+      <button type="button" class="btn-close" (click)="modal.dismiss()"></button>
+    </div>
+    <div class="modal-body">
+      <p class="small">
+        {{ a.ids.length }} CLC por {{ money(totalSeleccion(a.grupo)) }} pasan a <b>{{ config.a }}</b>.
+        @if (config.relacion) {
+          Se genera una <b>relación</b> (documento con la lista y firmas) para entregar a {{ config.envio }}.
+        }
+      </p>
+      @if (errores()['_general'] || errores()['ordenes']) {
+        <div class="alert alert-danger py-2 small">{{ errores()['ordenes'] ?? errores()['_general'] }}</div>
+      }
+
+      @if (config.observaciones || config.relacion) {
+        <label class="form-label" for="obs-clc">Observaciones{{ config.observaciones ? '' : ' (opcional)' }}</label>
+        <textarea id="obs-clc" rows="3" class="form-control" [(ngModel)]="observaciones" [class.is-invalid]="errores()['observaciones']"></textarea>
+        <div class="invalid-feedback">{{ errores()['observaciones'] }}</div>
+      }
+
+      @if (config.pago) {
+        <p class="small text-muted">Antes de pagar se vuelve a consultar cada factura en el SAT: una cancelada o no encontrada detiene el pago.</p>
+        <div class="row g-2">
+          <div class="col-md-6">
+            <label class="form-label" for="pago-fecha">Fecha de pago</label>
+            <input id="pago-fecha" type="date" class="form-control" [max]="hoy" [(ngModel)]="pagoFecha" [class.is-invalid]="errores()['pago_fecha']" />
+            <div class="invalid-feedback">{{ errores()['pago_fecha'] }}</div>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="pago-forma">Forma de pago</label>
+            <select id="pago-forma" class="form-select" [(ngModel)]="pagoForma" [class.is-invalid]="errores()['pago_forma']">
+              @for (f of datos()!.formasPago | keyvalue: sinOrden; track f.key) {
+                <option [value]="f.key">{{ f.value }}</option>
+              }
+            </select>
+            <div class="invalid-feedback">{{ errores()['pago_forma'] }}</div>
+          </div>
+          <div class="col-12">
+            <label class="form-label" for="pago-ref">{{ pagoForma === 'cheque' ? 'Número de cheque' : 'Referencia bancaria (opcional)' }}</label>
+            <input id="pago-ref" class="form-control" [(ngModel)]="pagoReferencia" [class.is-invalid]="errores()['pago_referencia']" />
+            <div class="invalid-feedback">{{ errores()['pago_referencia'] }}</div>
+            @if (pagoForma === 'transferencia') {
+              <small class="text-muted">El número de transferencia (TRF-AÑO-0001) lo asigna el sistema.</small>
+            }
+          </div>
+        </div>
+      }
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-outline-secondary" (click)="modal.dismiss()">Cerrar</button>
+      <button type="button" class="btn" [class.btn-primary]="!config.observaciones" [class.btn-danger]="config.observaciones" [disabled]="ocupado()" (click)="ejecutar(modal)">
+        {{ ocupado() ? 'Procesando…' : config.etiqueta }}
+      </button>
+    </div>
+  }
+</ng-template>

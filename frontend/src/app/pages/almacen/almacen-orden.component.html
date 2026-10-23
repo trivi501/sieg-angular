@@ -1,0 +1,206 @@
+@if (error()) {
+  <div class="card">
+    <div class="card-body">
+      <p>{{ error() }}</p>
+      <a routerLink="/almacen" class="btn btn-outline-secondary" appAccion="Volver al almacén" icono="arrow-left"></a>
+    </div>
+  </div>
+}
+
+@if (d(); as d) {
+  @let o = d.orden;
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+    <div>
+      <a routerLink="/almacen" class="small text-muted">← Almacén</a>
+      <h4 class="mb-1 mt-1">
+        Orden de compra {{ o.orden }}
+        @if (o.cancelada) {
+          <span class="badge bg-light-dark text-dark align-middle">Cancelada</span>
+        }
+      </h4>
+      <p class="text-muted small mb-0">
+        {{ o.proveedor }} · requisición <a [routerLink]="['/requisiciones', o.requisicion_id]">{{ o.requisicion }}</a> · {{ o.unidad }}
+      </p>
+      <p class="text-muted small mb-0">
+        Fecha {{ o.fecha | date: 'dd/MM/yyyy' }} · importe {{ money(o.importe) }} · factura {{ o.factura ?? 'sin cargar' }} · asignada al almacén el
+        {{ o.asignada | date: 'dd/MM/yyyy' }}
+      </p>
+    </div>
+    <div class="d-flex gap-2">
+      @if (d.puede.entrada) {
+        <button type="button" class="btn btn-primary" [disabled]="o.por_recibir <= 0" (click)="abrir('entradas')" appAccion="Registrar entrada" icono="import"></button>
+      }
+      @if (d.puede.salida) {
+        <button type="button" class="btn btn-outline-primary" [disabled]="o.existencia <= 0" (click)="abrir('salidas')" appAccion="Registrar salida" icono="export"></button>
+      }
+    </div>
+  </div>
+
+  @if (mensaje(); as m) {
+    <div class="alert alert-{{ m.tipo }} alert-dismissible py-2 d-flex flex-wrap align-items-center gap-2">
+      {{ m.texto }}
+      @if (m.pdf; as p) {
+        <button type="button" class="btn btn-sm btn-outline-dark" appAccion="Imprimir {{ p.folio }}" icono="printer" (click)="imprimir(p.tipo, p.id, p.folio)"></button>
+        @if (p.tipo === 'entrada') {
+          <button type="button" class="btn btn-sm btn-outline-dark" appAccion="Acta de entrega" icono="file-text" (click)="imprimir('acta', p.id, p.folio)"></button>
+        }
+      }
+      <button type="button" class="btn-close" (click)="mensaje.set(null)"></button>
+    </div>
+  }
+
+  <div class="card">
+    <div class="card-header"><h5 class="mb-0">Conceptos</h5></div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Concepto</th>
+              <th class="text-end">P. unitario</th>
+              <th class="text-end">Pedido</th>
+              <th class="text-end">Recibido</th>
+              <th class="text-end">Entregado</th>
+              <th class="text-end">Por recibir</th>
+              <th class="text-end">Existencia</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (c of d.conceptos; track c.detalle_id) {
+              <tr>
+                <td>{{ c.descripcion }}</td>
+                <td class="text-end font-monospace">{{ money(c.precio_unitario) }}</td>
+                <td class="text-end">{{ cantidad(c.pedido) }}</td>
+                <td class="text-end">{{ cantidad(c.recibido) }}</td>
+                <td class="text-end">{{ cantidad(c.entregado) }}</td>
+                <td class="text-end" [class.text-warning]="c.por_recibir > 0">{{ cantidad(c.por_recibir) }}</td>
+                <td class="text-end fw-semibold">{{ cantidad(c.existencia) }}</td>
+              </tr>
+            }
+          </tbody>
+          <tfoot>
+            <tr class="fw-semibold">
+              <td colspan="2">Total</td>
+              <td class="text-end">{{ cantidad(o.pedido) }}</td>
+              <td class="text-end">{{ cantidad(o.recibido) }}</td>
+              <td class="text-end">{{ cantidad(o.entregado) }}</td>
+              <td class="text-end">{{ cantidad(o.por_recibir) }}</td>
+              <td class="text-end">{{ cantidad(o.existencia) }}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-6">
+      <div class="card h-100 mb-0">
+        <div class="card-header"><h5 class="mb-0">Entradas</h5></div>
+        <div class="card-body">
+          @for (e of d.entradas; track e.id) {
+            <div class="d-flex justify-content-between align-items-start border-bottom py-2">
+              <div class="small">
+                <b>{{ e.folio }}</b> · {{ e.fecha | date: 'dd/MM/yyyy' }} · {{ e.usuario }}
+                <span class="d-block text-muted">{{ e.renglones }} concepto(s), {{ cantidad(e.cantidad) }} unidades{{ e.observaciones ? ' · ' + e.observaciones : '' }}</span>
+              </div>
+              @if (!o.cancelada) {
+                <div class="d-flex gap-1">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" (click)="imprimir('entrada', e.id, e.folio)" appAccion="Imprimir entrada" icono="import"></button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" (click)="imprimir('acta', e.id, e.folio)" appAccion="Acta de entrega" icono="file-text"></button>
+                </div>
+              }
+            </div>
+          } @empty {
+            <p class="text-muted small mb-0">Sin entradas.</p>
+          }
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card h-100 mb-0">
+        <div class="card-header"><h5 class="mb-0">Salidas</h5></div>
+        <div class="card-body">
+          @for (s of d.salidas; track s.id) {
+            <div class="d-flex justify-content-between align-items-start border-bottom py-2">
+              <div class="small">
+                <b>{{ s.folio }}</b> · {{ s.fecha | date: 'dd/MM/yyyy' }} · {{ s.usuario }}
+                <span class="d-block text-muted">
+                  {{ s.renglones }} concepto(s), {{ cantidad(s.cantidad) }} unidades{{ s.recibe ? ' · recibe ' + s.recibe : '' }}{{ s.observaciones ? ' · ' + s.observaciones : '' }}
+                </span>
+              </div>
+              @if (!o.cancelada) {
+                <button type="button" class="btn btn-sm btn-outline-secondary" (click)="imprimir('salida', s.id, s.folio)" appAccion="Imprimir salida" icono="export"></button>
+              }
+            </div>
+          } @empty {
+            <p class="text-muted small mb-0">Sin salidas.</p>
+          }
+        </div>
+      </div>
+    </div>
+  </div>
+} @else if (!error()) {
+  <p class="text-muted">Cargando…</p>
+}
+
+<ng-template #movimientoTpl let-modal>
+  <div class="modal-header">
+    <h5 class="modal-title">{{ tipo() === 'entradas' ? 'Registrar entrada de almacén' : 'Registrar salida de almacén' }}</h5>
+    <button type="button" class="btn-close" (click)="modal.dismiss()"></button>
+  </div>
+  <div class="modal-body">
+    <p class="small text-muted">
+      {{
+        tipo() === 'entradas'
+          ? 'Lo que se recibe del proveedor, por partes, hasta lo que falta por recibir. Folio EA-AÑO-0001.'
+          : 'Lo que se entrega al área de la requisición, por partes, hasta la existencia. Folio SA-AÑO-0001.'
+      }}
+    </p>
+    @if (errores()['cantidades'] || errores()['_general']) {
+      <div class="alert alert-danger py-2 small">{{ errores()['cantidades'] ?? errores()['_general'] }}</div>
+    }
+    <div class="row g-2 mb-3">
+      <div class="col-md-4">
+        <label class="form-label small mb-1" for="mov-fecha">Fecha</label>
+        <input id="mov-fecha" type="date" class="form-control form-control-sm" [max]="hoy" [(ngModel)]="fecha" [class.is-invalid]="errores()['fecha']" />
+        <div class="invalid-feedback">{{ errores()['fecha'] }}</div>
+      </div>
+      @if (tipo() === 'salidas') {
+        <div class="col-md-8">
+          <label class="form-label small mb-1" for="mov-recibe">Recibe (área)</label>
+          <input id="mov-recibe" class="form-control form-control-sm" [(ngModel)]="recibe" />
+        </div>
+      }
+    </div>
+    <table class="table table-sm align-middle">
+      <thead>
+        <tr>
+          <th>Concepto</th>
+          <th class="text-end">{{ tipo() === 'entradas' ? 'Por recibir' : 'Existencia' }}</th>
+          <th style="width: 140px">Cantidad</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (c of conceptosConLimite(); track c.detalle_id) {
+          <tr>
+            <td class="small">{{ c.descripcion }}</td>
+            <td class="text-end">{{ cantidad(limite(c)) }}</td>
+            <td>
+              <input type="number" min="0" step="any" class="form-control form-control-sm" [max]="limite(c)" [(ngModel)]="cantidades[c.detalle_id]" />
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+    <button type="button" class="btn btn-sm btn-link px-0" (click)="todo()">{{ tipo() === 'entradas' ? 'Recibir todo lo pendiente' : 'Entregar toda la existencia' }}</button>
+    <div class="mt-2">
+      <label class="form-label small mb-1" for="mov-obs">Observaciones</label>
+      <textarea id="mov-obs" rows="2" class="form-control form-control-sm" [(ngModel)]="observaciones"></textarea>
+    </div>
+  </div>
+  <div class="modal-footer">
+    <button type="button" class="btn btn-outline-secondary" (click)="modal.dismiss()">Cerrar</button>
+    <button type="button" class="btn btn-primary" [disabled]="guardando()" (click)="registrar(modal)">{{ guardando() ? 'Registrando…' : 'Registrar' }}</button>
+  </div>
+</ng-template>

@@ -1,0 +1,114 @@
+/**======================================================================
+=========================================================================
+Template Name: MAntis Angular - Angular Admin Template
+Author: codedThemes
+Support: https://codedthemes.support-hub.io/
+File: style.css
+=========================================================================
+=================================================================================== */
+
+// main framework
+@import '../node_modules/bootstrap/scss/functions';
+@import '../node_modules/bootstrap/scss/variables';
+@import '../node_modules/bootstrap/scss/variables-dark';
+
+@import 'scss/settings/color-variables';
+@import 'scss/settings/theme-variables';
+@import 'scss/settings/bootstrap-variables';
+
+// bootstrap import
+@import 'scss/bootstrap/bootstrap.scss';
+
+@import '../node_modules/bootstrap/scss/utilities';
+@import '../node_modules/bootstrap/scss/utilities/api';
+
+// main framework
+@import 'scss/themes/generic.scss';
+@import 'scss/themes/general.scss';
+
+@import 'scss/themes/components/components.scss';
+
+// theme
+@import 'scss/themes/layouts/menu/sidebar.scss';
+@import 'scss/themes/layouts/navbar/navbar.scss';
+@import 'scss/themes/layouts/pc-common.scss';
+@import 'scss/themes/layouts/breadcrumb/breadcrumb.scss';
+@import 'scss/themes/layouts/footer/footer.scss';
+
+@import 'scss/themes/preset-style.scss';
+
+// Estados de la requisición: un color por estado, en el orden del trámite (claseEstado en requisiciones.service.ts).
+.estado-req {
+  color: #fff;
+  font-weight: 500;
+}
+.estado-req-1 { background-color: #8c8c8c; } // Pendiente
+.estado-req-2 { background-color: #13c2c2; } // En revisión
+.estado-req-3 { background-color: #1677ff; } // Aprobada
+.estado-req-4 { background-color: #fa8c16; } // Rechazada (no válida)
+.estado-req-5 { background-color: #722ed1; } // En Recursos Materiales
+.estado-req-6 { background-color: #eb2f96; } // En cotización
+.estado-req-7 { background-color: #08979c; } // Comprometida
+.estado-req-8 { background-color: #2f54eb; } // Orden de compra
+.estado-req-9 { background-color: #d48806; } // Con factura
+.estado-req-10 { background-color: #7cb305; } // CLC generada
+.estado-req-11 { background-color: #389e0d; } // Pagada
+.estado-req-12 { background-color: #f5222d; } // Cancelada
+
+// Logo institucional (Ayuntamiento de Guadalupe 2024-2027).
+.pc-sidebar .m-header {
+  height: auto;
+  justify-content: center;
+  padding: 12px 24px;
+}
+.logo-guadalupe {
+  height: 128px;
+  width: auto;
+}
+.logo-login {
+  height: 160px;
+  width: auto;
+}
+
+// Botones de acción solo con icono (app/shared/accion.component.ts).
+.btn-accion {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  font-size: 15px;
+  line-height: 1;
+
+  & + .btn-accion {
+    margin-left: 4px;
+  }
+
+  // Botones de tamaño normal (encabezados de página, pasos del trámite).
+  &:not(.btn-sm) {
+    width: 38px;
+    height: 38px;
+    font-size: 18px;
+  }
+}
+
+// Selects con búsqueda (app/shared/select-busqueda.directive.ts, Tom Select).
+@import 'tom-select/dist/css/tom-select.bootstrap5.css';
+
+.ts-dropdown {
+  z-index: 2000; // por encima de las ventanas (modal 1055)
+}
+.ts-wrapper.form-select-sm .ts-control {
+  min-height: calc(1.5em + 0.5rem + 2px);
+  padding: 0.25rem 2rem 0.25rem 0.5rem;
+  font-size: 0.875rem;
+}
+.ts-dropdown .active {
+  background-color: rgba(122, 52, 70, 0.1);
+  color: #7a3446;
+}
+.ts-wrapper.focus .ts-control {
+  border-color: #7a3446;
+  box-shadow: 0 0 0 0.2rem rgba(122, 52, 70, 0.2);
+}

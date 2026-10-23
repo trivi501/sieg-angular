@@ -1,0 +1,104 @@
+@if (error()) {
+  <div class="card">
+    <div class="card-body">
+      <p>{{ error() }}</p>
+      <a routerLink="/modificaciones" class="btn btn-outline-secondary" appAccion="Volver" icono="arrow-left"></a>
+    </div>
+  </div>
+}
+
+@if (d(); as d) {
+  @let m = d.modificacion;
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+    <div>
+      <a routerLink="/modificaciones" class="small text-muted">← Modificaciones presupuestales</a>
+      <h4 class="mb-1 mt-1">
+        {{ m.folio_completo }} · {{ d.tipos[m.tipo] }}
+        <span class="badge text-capitalize align-middle {{ claseEstado(m.estado) }}">{{ m.estado }}</span>
+      </h4>
+      <p class="text-muted small mb-0">
+        Solicitada por {{ m.solicitante }} el {{ m.created_at | date: 'dd/MM/yyyy HH:mm' }}
+        @if (m.requisicion; as r) {
+          · para la requisición <a [routerLink]="['/requisiciones', r.id]">{{ r.folio }}</a>
+        }
+      </p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <button type="button" class="btn btn-outline-secondary" (click)="imprimir()" appAccion="Imprimir formato" icono="printer"></button>
+      @if (d.puedeResolver) {
+        <button type="button" class="btn btn-success" (click)="resolver('autorizar')" appAccion="Aceptar" icono="check"></button>
+        <button type="button" class="btn btn-outline-danger" (click)="resolver('rechazar')" appAccion="Rechazar" icono="close"></button>
+      }
+    </div>
+  </div>
+
+  @if (mensaje(); as msg) {
+    <div class="alert alert-{{ msg.tipo }} alert-dismissible py-2">
+      {{ msg.texto }}
+      <button type="button" class="btn-close" (click)="mensaje.set(null)"></button>
+    </div>
+  }
+
+  @if (m.estado !== 'pendiente') {
+    <div class="alert py-2 small" [class.alert-success]="m.estado === 'autorizada'" [class.alert-danger]="m.estado === 'rechazada'">
+      {{ m.estado === 'autorizada' ? 'Autorizada' : 'Rechazada' }} por {{ m.autorizador }} el {{ m.resuelto_at | date: 'dd/MM/yyyy HH:mm' }}.
+      @if (m.observaciones_resolucion) {
+        <span class="d-block">{{ m.estado === 'rechazada' ? 'Motivo' : 'Observaciones' }}: {{ m.observaciones_resolucion }}</span>
+      }
+    </div>
+  }
+
+  <div class="row g-3">
+    <div class="col-12">
+      <div class="card mb-0">
+        <div class="card-body row small g-2">
+          <div class="col-sm-3"><span class="text-muted d-block">Importe</span><span class="fs-5 fw-semibold">{{ money(m.importe) }}</span></div>
+          <div class="col-sm-9"><span class="text-muted d-block">Justificación</span>{{ m.justificacion }}</div>
+        </div>
+      </div>
+    </div>
+    @for (x of lados(d); track x.lado) {
+      <div class="col-lg-6">
+        <div class="card h-100 mb-0">
+          <div class="card-header">
+            <h6 class="mb-0">{{ x.titulo }}</h6>
+            @if (x.mes) {
+              <small class="text-muted text-capitalize">Periodo {{ d.meses[x.mes] }}</small>
+            }
+          </div>
+          <div class="card-body small">
+            <p class="mb-2">{{ x.lado === 'origen' ? m.origen_descripcion : m.destino_descripcion }}</p>
+            @if (x.linea; as l) {
+              <div class="row g-1">
+                <div class="col-6 text-muted">Aprobado</div>
+                <div class="col-6 text-end font-monospace">{{ money(l.asignado) }}</div>
+                <div class="col-6 text-muted">Modificado</div>
+                <div class="col-6 text-end font-monospace">{{ money(l.modificado) }}</div>
+                <div class="col-6 text-muted">Vigente</div>
+                <div class="col-6 text-end font-monospace">{{ money(l.vigente) }}</div>
+                <div class="col-6 text-muted">Comprometido</div>
+                <div class="col-6 text-end font-monospace">{{ money(l.comprometido) }}</div>
+                <div class="col-6 fw-semibold">Disponible actual</div>
+                <div class="col-6 text-end font-monospace fw-semibold">{{ money(l.disponible) }}</div>
+              </div>
+              @if (m.estado === 'autorizada') {
+                <small class="text-muted d-block mt-2">
+                  @if (x.lado === 'origen' && m.origen_disponible_antes !== null) {
+                    Disponible al autorizar: {{ money(m.origen_disponible_antes) }}
+                  }
+                  @if (x.lado === 'destino' && m.destino_vigente_antes !== null) {
+                    Vigente al autorizar: {{ money(m.destino_vigente_antes) }}
+                  }
+                </small>
+              }
+            } @else {
+              <p class="text-danger mb-0">La línea ya no existe en el presupuesto importado.</p>
+            }
+          </div>
+        </div>
+      </div>
+    }
+  </div>
+} @else if (!error()) {
+  <p class="text-muted">Cargando…</p>
+}

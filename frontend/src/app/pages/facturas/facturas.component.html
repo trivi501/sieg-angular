@@ -1,0 +1,146 @@
+<div class="mb-3">
+  <h4 class="mb-1">Facturas</h4>
+  <p class="text-muted small mb-0">
+    CFDI cargados a las órdenes de compra, también los cancelados con su orden: su validación en el SAT y en qué va su trámite (requisición, orden de compra y
+    CLC).
+  </p>
+</div>
+
+@if (error()) {
+  <div class="alert alert-danger alert-dismissible py-2">
+    {{ error() }}
+    <button type="button" class="btn-close" (click)="error.set('')"></button>
+  </div>
+}
+
+<div class="card">
+  <div class="card-body">
+    <form class="row g-2 mb-3 align-items-end" (ngSubmit)="cargar(1)">
+      <div class="col-md-4">
+        <label class="form-label small mb-1" for="buscar">Buscar</label>
+        <input id="buscar" name="buscar" class="form-control form-control-sm" placeholder="Emisor, RFC, folio, UUID, requisición, O.C., CLC…" [(ngModel)]="filtros['buscar']" />
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small mb-1" for="sat">SAT</label>
+        <select id="sat" name="sat" class="form-select form-select-sm" [(ngModel)]="filtros['sat']" (ngModelChange)="cargar(1)">
+          <option value="">Todas</option>
+          <option value="Vigente">Vigente</option>
+          <option value="Cancelado">Cancelada</option>
+          <option value="No Encontrado">No encontrada</option>
+          <option value="sin_verificar">Sin verificar</option>
+        </select>
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small mb-1" for="vigencia">Factura</label>
+        <select id="vigencia" name="vigencia" class="form-select form-select-sm" [(ngModel)]="filtros['vigencia']" (ngModelChange)="cargar(1)">
+          <option value="">Todas</option>
+          <option value="vigentes">Aceptadas</option>
+          <option value="canceladas">Canceladas con su orden</option>
+        </select>
+      </div>
+      <div class="col-6 col-md-1">
+        <label class="form-label small mb-1" for="desde">Desde</label>
+        <input id="desde" name="desde" type="date" class="form-control form-control-sm" [(ngModel)]="filtros['desde']" />
+      </div>
+      <div class="col-6 col-md-1">
+        <label class="form-label small mb-1" for="hasta">Hasta</label>
+        <input id="hasta" name="hasta" type="date" class="form-control form-control-sm" [(ngModel)]="filtros['hasta']" />
+      </div>
+      <div class="col-md-2 d-flex gap-1">
+        <button type="submit" class="btn btn-sm btn-primary" appAccion="Filtrar" icono="search"></button>
+        @if (hayFiltros()) {
+          <button type="button" class="btn btn-sm btn-outline-secondary" (click)="limpiar()" appAccion="Limpiar filtros" icono="clear"></button>
+        }
+      </div>
+    </form>
+
+    @if (datos(); as d) {
+      <p class="small text-muted mb-2">{{ d.totales.facturas }} facturas · total {{ money(d.totales.total) }}</p>
+
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Emisor</th>
+              <th>Folio / UUID</th>
+              <th>Fecha</th>
+              <th class="text-end">Total</th>
+              <th>SAT</th>
+              <th>Requisición (FUR)</th>
+              <th>Orden de compra</th>
+              <th>CLC</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (f of d.data; track f.id) {
+              <tr [class.text-muted]="f.cancelada">
+                <td>
+                  {{ f.emisor }}
+                  <small class="d-block text-muted">{{ f.rfc }}</small>
+                  @if (f.sat_efos) {
+                    <span class="badge bg-danger">EFOS</span>
+                  }
+                </td>
+                <td style="max-width: 220px">
+                  {{ f.folio ?? '—' }}
+                  <span class="d-block uuid text-muted">{{ f.uuid }}</span>
+                  @if (f.cancelada) {
+                    <span class="badge bg-light-dark text-dark">Cancelada con su orden</span>
+                  }
+                </td>
+                <td class="text-nowrap">
+                  {{ f.fecha | date: 'dd/MM/yyyy' }}
+                  <small class="d-block text-muted">cargada {{ f.cargada | date: 'dd/MM/yyyy' }}</small>
+                </td>
+                <td class="text-end font-monospace">
+                  {{ money(f.total) }}
+                  @if (f.isr > 0) {
+                    <small class="d-block text-muted">ISR {{ money(f.isr) }}</small>
+                  }
+                </td>
+                <td>
+                  <span class="badge {{ claseSat(f.sat_estado) }}">{{ f.sat_estado ?? 'Sin verificar' }}</span>
+                  @if (f.sat_estatus_cancelacion) {
+                    <small class="d-block text-muted">{{ f.sat_estatus_cancelacion }}</small>
+                  }
+                  @if (f.sat_verificado_at) {
+                    <small class="d-block text-muted">{{ f.sat_verificado_at | date: 'dd/MM/yyyy HH:mm' }}</small>
+                  }
+                </td>
+                <td class="text-nowrap">
+                  <a [routerLink]="['/requisiciones', f.requisicion_id]">{{ f.requisicion }}</a>
+                  <small class="d-block text-muted">{{ f.requisicion_estado }}</small>
+                </td>
+                <td class="text-nowrap">
+                  {{ f.orden }}
+                  @if (f.orden_cancelada) {
+                    <small class="d-block text-danger">Cancelada</small>
+                  }
+                  @if (f.xml) {
+                    <button type="button" class="btn btn-sm btn-outline-secondary" (click)="descargarXml(f)" appAccion="Descargar XML" icono="download"></button>
+                  }
+                </td>
+                <td class="text-nowrap">
+                  {{ f.clc ?? '—' }}
+                  @if (f.clc_estado) {
+                    <small class="d-block" [class.text-success]="f.clc_clave === 'pagada'" [class.text-danger]="f.clc_clave === 'cancelada'" [class.text-muted]="f.clc_clave !== 'pagada' && f.clc_clave !== 'cancelada'">
+                      {{ f.clc_estado }}
+                    </small>
+                  }
+                </td>
+              </tr>
+            } @empty {
+              <tr>
+                <td colspan="8" class="text-center text-muted py-4">Sin facturas.</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <app-paginacion [actual]="d.current_page" [ultima]="d.last_page" [total]="d.total" (cambiar)="cargar($event)" />
+    } @else {
+      <p class="text-muted mb-0">Cargando…</p>
+    }
+  </div>
+</div>

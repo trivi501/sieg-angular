@@ -1,0 +1,295 @@
+@if (error()) {
+  <div class="card">
+    <div class="card-body">
+      <p class="mb-3">{{ error() }}</p>
+      <a routerLink="/catalogos" class="btn btn-outline-secondary" appAccion="Volver a catálogos" icono="arrow-left"></a>
+    </div>
+  </div>
+}
+
+@if (definicion(); as d) {
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+    <div>
+      <a routerLink="/catalogos" class="small text-muted">← Catálogos · {{ d.grupo }}</a>
+      <h4 class="mb-1 mt-1">{{ d.titulo }}</h4>
+      @if (d.descripcion) {
+        <p class="text-muted mb-0 small">{{ d.descripcion }}</p>
+      }
+    </div>
+    <div class="d-flex gap-2">
+      @if (d.puede.importar) {
+        <button type="button" class="btn btn-outline-primary" (click)="abrirImportar()" appAccion="Importar" icono="upload"></button>
+      }
+      @if (d.puede.crear) {
+        <button type="button" class="btn btn-primary" (click)="abrir(null)">Nuevo {{ d.singular }}</button>
+      }
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-body">
+      @if (mensaje(); as m) {
+        <div class="alert alert-{{ m.tipo }} alert-dismissible py-2">
+          {{ m.texto }}
+          <button type="button" class="btn-close" (click)="mensaje.set(null)"></button>
+        </div>
+      }
+
+      <form class="d-flex flex-wrap gap-2 mb-3" (ngSubmit)="cargar(1)">
+        <input class="form-control w-auto flex-grow-1" style="max-width: 360px" name="buscar" placeholder="Buscar…" [(ngModel)]="buscar" />
+        <button class="btn btn-outline-secondary" type="submit" appAccion="Buscar" icono="search"></button>
+        @if (d.tieneActivo) {
+          <select class="form-select w-auto" name="estado" [(ngModel)]="estado" (ngModelChange)="cargar(1)">
+            <option value="">Todos</option>
+            <option value="activos">Activos</option>
+            <option value="inactivos">Dados de baja</option>
+          </select>
+        }
+      </form>
+
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              @for (c of columnas(); track c.nombre) {
+                <th>{{ c.etiqueta }}</th>
+              }
+              @if (d.tieneActivo) {
+                <th>Estatus</th>
+              }
+              <th class="text-end">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (r of pagina()?.data ?? []; track r.id) {
+              <tr [class.text-muted]="!r.activo">
+                @for (c of columnas(); track c.nombre) {
+                  <td class="text-truncate" style="max-width: 320px" [title]="r.textos[c.nombre] ?? ''">{{ r.textos[c.nombre] ?? '—' }}</td>
+                }
+                @if (d.tieneActivo) {
+                  <td>
+                    @if (r.activo) {
+                      <span class="badge bg-light-success text-success">Activo</span>
+                    } @else {
+                      <span class="badge bg-light-secondary text-secondary">Baja</span>
+                    }
+                  </td>
+                }
+                <td class="text-end text-nowrap">
+                  @if (slug === 'vehiculos') {
+                    <button type="button" class="btn btn-sm btn-outline-primary" (click)="verMantenimientos(r)" appAccion="Mantenimientos y costo" icono="tool"></button>
+                  }
+                  <button type="button" class="btn btn-sm btn-outline-secondary" (click)="verHistorial(r)" appAccion="Historial" icono="history"></button>
+                  @if (d.puede.editar) {
+                    <button type="button" class="btn btn-sm btn-outline-primary" (click)="abrir(r)" appAccion="Editar" icono="edit"></button>
+                  }
+                  @if (d.puede.baja && d.tieneActivo) {
+                    @if (r.activo) {
+                      <button type="button" class="btn btn-sm btn-outline-danger" (click)="cambiarEstado(r, false)" appAccion="Dar de baja" icono="stop"></button>
+                    } @else {
+                      <button type="button" class="btn btn-sm btn-outline-success" (click)="cambiarEstado(r, true)" appAccion="Reactivar" icono="undo"></button>
+                    }
+                  }
+                </td>
+              </tr>
+            } @empty {
+              <tr>
+                <td [attr.colspan]="columnas().length + 2" class="text-center text-muted py-4">{{ pagina() ? 'Sin registros.' : 'Cargando…' }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      @if (pagina(); as p) {
+        <app-paginacion [actual]="p.current_page" [ultima]="p.last_page" [total]="p.total" (cambiar)="cargar($event)" />
+      }
+    </div>
+  </div>
+}
+
+<!-- Alta / edición -->
+<ng-template #formulario let-modal>
+  <form (ngSubmit)="guardar()">
+    <div class="modal-header">
+      <h5 class="modal-title">{{ editando() ? 'Editar' : 'Nuevo' }} {{ definicion()?.singular }}</h5>
+      <button type="button" class="btn-close" (click)="modal.dismiss()"></button>
+    </div>
+    <div class="modal-body">
+      @if (errores()['_general']) {
+        <div class="alert alert-danger py-2">{{ errores()['_general'] }}</div>
+      }
+      <div class="row g-3">
+        @for (c of editables(); track c.nombre) {
+          <div [class]="c.tipo === 'texto_largo' ? 'col-12' : 'col-md-6'">
+            @if (c.tipo === 'booleano') {
+              <div class="form-check form-switch mt-md-4">
+                <input class="form-check-input" type="checkbox" [id]="'f-' + c.nombre" [name]="c.nombre" [(ngModel)]="valores[c.nombre]" />
+                <label class="form-check-label" [for]="'f-' + c.nombre">{{ c.etiqueta }}</label>
+              </div>
+            } @else {
+              <label class="form-label" [for]="'f-' + c.nombre">
+                {{ c.etiqueta }}
+                @if (c.requerido) {
+                  <span class="text-danger">*</span>
+                }
+              </label>
+              @switch (c.tipo) {
+                @case ('seleccion') {
+                  <select class="form-select" [id]="'f-' + c.nombre" [name]="c.nombre" [ngModel]="valorSelect(c)" (ngModelChange)="valores[c.nombre] = $event || null" [class.is-invalid]="errores()[c.nombre]">
+                    <option value="">Seleccionar…</option>
+                    @for (o of c.opciones ?? []; track o.valor) {
+                      <option [value]="o.valor">{{ o.etiqueta }}</option>
+                    }
+                  </select>
+                }
+                @case ('relacion') {
+                  <select class="form-select" [id]="'f-' + c.nombre" [name]="c.nombre" [ngModel]="valorSelect(c)" (ngModelChange)="valores[c.nombre] = $event || null" [class.is-invalid]="errores()[c.nombre]">
+                    <option value="">{{ c.requerido ? 'Seleccionar…' : 'Ninguno' }}</option>
+                    @for (o of c.opciones ?? []; track o.valor) {
+                      <option [value]="o.valor">{{ o.etiqueta }}</option>
+                    }
+                  </select>
+                }
+                @case ('texto_largo') {
+                  <textarea class="form-control" rows="3" [id]="'f-' + c.nombre" [name]="c.nombre" [(ngModel)]="valores[c.nombre]" [attr.maxlength]="c.max" [class.is-invalid]="errores()[c.nombre]"></textarea>
+                }
+                @case ('entero') {
+                  <input type="number" class="form-control" [id]="'f-' + c.nombre" [name]="c.nombre" [(ngModel)]="valores[c.nombre]" [class.is-invalid]="errores()[c.nombre]" />
+                }
+                @case ('fecha') {
+                  <input type="date" class="form-control" [id]="'f-' + c.nombre" [name]="c.nombre" [(ngModel)]="valores[c.nombre]" [class.is-invalid]="errores()[c.nombre]" />
+                }
+                @default {
+                  <input
+                    type="text"
+                    class="form-control"
+                    [id]="'f-' + c.nombre"
+                    [name]="c.nombre"
+                    [(ngModel)]="valores[c.nombre]"
+                    [attr.maxlength]="c.max"
+                    [style.text-transform]="c.mayusculas ? 'uppercase' : null"
+                    [class.is-invalid]="errores()[c.nombre]"
+                  />
+                }
+              }
+              <div class="invalid-feedback">{{ errores()[c.nombre] }}</div>
+            }
+            @if (c.ayuda) {
+              <small class="text-muted d-block mt-1">{{ c.ayuda }}</small>
+            }
+          </div>
+        }
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-outline-secondary" (click)="modal.dismiss()">Cancelar</button>
+      <button type="submit" class="btn btn-primary" [disabled]="guardando()">{{ guardando() ? 'Guardando…' : 'Guardar' }}</button>
+    </div>
+  </form>
+</ng-template>
+
+<!-- Historial -->
+<ng-template #historialTpl let-modal>
+  <div class="modal-header">
+    <h5 class="modal-title">Historial de cambios</h5>
+    <button type="button" class="btn-close" (click)="modal.dismiss()"></button>
+  </div>
+  <div class="modal-body">
+    @if (historial(); as h) {
+      @if (h.movimientos === null) {
+        <p class="text-muted">Cargando…</p>
+      } @else if (!h.movimientos.length) {
+        <p class="text-muted mb-0">Sin cambios registrados.</p>
+      } @else {
+        @for (m of h.movimientos; track m.id) {
+          <div class="border rounded p-2 mb-2">
+            <div class="d-flex justify-content-between flex-wrap gap-1">
+              <span><span class="badge bg-light-primary text-primary text-capitalize">{{ m.accion }}</span> {{ m.usuario ?? 'Sistema' }}</span>
+              <small class="text-muted">{{ m.fecha | date: 'dd/MM/yyyy HH:mm' }}</small>
+            </div>
+            @if (m.descripcion) {
+              <small class="text-muted d-block">{{ m.descripcion }}</small>
+            }
+            @if (m.accion === 'modificación' || m.accion === 'baja' || m.accion === 'reactivación') {
+              <table class="table table-sm mb-0 mt-2">
+                <tbody>
+                  @for (x of cambios(m); track x.campo) {
+                    <tr>
+                      <td class="text-muted" style="width: 35%">{{ x.campo }}</td>
+                      <td class="text-decoration-line-through text-danger">{{ texto(x.antes) }}</td>
+                      <td class="text-success">{{ texto(x.despues) }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            }
+          </div>
+        }
+      }
+    }
+  </div>
+</ng-template>
+
+<!-- Importación -->
+<ng-template #importarTpl let-modal>
+  <div class="modal-header">
+    <h5 class="modal-title">Importar {{ definicion()?.titulo }}</h5>
+    <button type="button" class="btn-close" (click)="modal.dismiss()"></button>
+  </div>
+  <div class="modal-body">
+    <p class="text-muted">
+      Descarga la plantilla, llénala y súbela. Primero se muestra una vista previa; nada se guarda hasta confirmar.
+      Los registros que ya existen (misma llave) se actualizan.
+    </p>
+    <button type="button" class="btn btn-sm btn-outline-secondary mb-3" (click)="descargarPlantilla()" appAccion="Descargar plantilla" icono="download"></button>
+
+    <div class="d-flex gap-2 mb-3">
+      <input type="file" class="form-control" accept=".xlsx,.xls,.csv" (change)="elegirArchivo($event)" />
+      <button type="button" class="btn btn-primary text-nowrap" [disabled]="!archivo || importando()" (click)="analizar()">Vista previa</button>
+    </div>
+
+    @if (errorImportacion()) {
+      <div class="alert alert-danger py-2">{{ errorImportacion() }}</div>
+    }
+
+    @if (resumen(); as r) {
+      <div class="border rounded p-3">
+        <p class="mb-2"><b>{{ r.archivo }}</b></p>
+        @if (r.faltantes.length) {
+          <div class="alert alert-danger py-2">Faltan columnas obligatorias: {{ r.faltantes.join(', ') }}. Usa la plantilla.</div>
+        } @else {
+          <span class="badge bg-primary me-1">{{ r.altas }} altas</span>
+          <span class="badge bg-light-primary text-primary me-1">{{ r.modificaciones }} modificaciones</span>
+          <span class="badge bg-light-secondary text-secondary">{{ r.sinCambios }} sin cambios</span>
+        }
+        @if (r.columnasIgnoradas.length) {
+          <small class="text-muted d-block mt-2">Columnas ignoradas: {{ r.columnasIgnoradas.join(', ') }}</small>
+        }
+        @if (r.totalErrores) {
+          <div class="alert alert-danger py-2 mt-2 mb-0">
+            <b>{{ r.totalErrores }} renglones con errores.</b> Corrígelos y vuelve a subir el archivo.
+            <ul class="mb-0 mt-1 small">
+              @for (e of r.errores; track e.fila) {
+                <li>Renglón {{ e.fila }}: {{ e.mensajes.join(' ') }}</li>
+              }
+            </ul>
+          </div>
+        }
+      </div>
+    }
+  </div>
+  <div class="modal-footer">
+    <button type="button" class="btn btn-outline-secondary" (click)="modal.dismiss()">Cerrar</button>
+    @if (resumen(); as r) {
+      <button
+        type="button"
+        class="btn btn-primary"
+        [disabled]="importando() || r.totalErrores > 0 || r.faltantes.length > 0 || r.altas + r.modificaciones === 0"
+        (click)="confirmarImportacion(modal)"
+      >
+        Importar {{ r.altas + r.modificaciones }} registros
+      </button>
+    }
+  </div>
+</ng-template>

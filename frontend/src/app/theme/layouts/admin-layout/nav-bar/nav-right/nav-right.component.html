@@ -1,0 +1,59 @@
+<ul class="list-unstyled">
+  @if (auth.can('tickets-index')) {
+    <li class="pc-h-item" ngbDropdown>
+      <a href="javascript:void(0)" class="pc-head-link dropdown-toggle arrow-none me-0 bg-gray-200" ngbDropdownToggle title="Notificaciones">
+        <i antIcon type="bell" theme="outline"></i>
+        @if (notificaciones().length) {
+          <span class="badge bg-primary pc-h-badge">{{ notificaciones().length }}</span>
+        }
+      </a>
+      <div class="dropdown-notification dropdown-menu-end pc-h-dropdown" ngbDropdownMenu>
+        <div class="dropdown-header d-flex align-items-center justify-content-between">
+          <h5 class="m-0">Notificaciones</h5>
+          <a routerLink="/tickets" class="small">Ver tickets</a>
+        </div>
+        <div class="dropdown-divider mb-0"></div>
+        <div class="list-group list-group-flush" style="max-height: 320px; overflow-y: auto">
+          @for (n of notificaciones(); track n.id) {
+            <button type="button" class="list-group-item list-group-item-action text-start" (click)="abrir(n)">
+              <p class="text-body mb-1 small">{{ n.message }}</p>
+              <span class="text-muted" style="font-size: 11px">{{ n.created_at | date: 'dd/MM/yyyy HH:mm' }}</span>
+            </button>
+          } @empty {
+            <p class="text-muted small text-center py-3 mb-0">Sin notificaciones nuevas.</p>
+          }
+        </div>
+      </div>
+    </li>
+  }
+  @if (auth.user(); as user) {
+    <li class="pc-h-item header-user-profile" ngbDropdown>
+      <a href="javascript:void(0)" class="pc-head-link arrow-none me-0" ngbDropdownToggle>
+        <span class="user-avatar me-2 avatar-iniciales">{{ iniciales(user.name) }}</span>
+        <span class="f-w-600">{{ user.name }}</span>
+      </a>
+      <div class="dropdown-user-profile dropdown-menu-end pc-h-dropdown" ngbDropdownMenu>
+        <div class="dropdown-header">
+          <div class="d-flex mb-1 align-items-center">
+            <div class="flex-shrink-0">
+              <span class="user-avatar wid-35 avatar-iniciales">{{ iniciales(user.name) }}</span>
+            </div>
+            <div class="flex-grow-1 ms-3 text-start">
+              <h6 class="mb-0">{{ user.name }}</h6>
+              <span class="text-muted d-block">{{ user.email }}</span>
+              @if (user.unidad) {
+                <small class="text-muted d-block">{{ user.unidad }}</small>
+              }
+              <small class="text-primary">{{ user.roles.join(', ') }}</small>
+            </div>
+          </div>
+        </div>
+        <div class="dropdown-divider"></div>
+        <button type="button" class="dropdown-item" (click)="auth.logout()">
+          <i class="text-muted" antIcon theme="outline" type="logout"></i>
+          <span>Cerrar sesión</span>
+        </button>
+      </div>
+    </li>
+  }
+</ul>

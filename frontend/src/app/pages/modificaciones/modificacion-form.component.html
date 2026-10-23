@@ -1,0 +1,149 @@
+<div class="mb-3">
+  <a routerLink="/modificaciones" class="small text-muted">← Modificaciones presupuestales</a>
+  <h4 class="mb-1 mt-1">Nueva modificación presupuestal</h4>
+  <p class="text-muted small mb-0">
+    Registra la solicitud, imprime el formato para firma y el Jefe de Control Presupuestal la acepta o la rechaza. El periodo de cada lado va del mes actual a
+    diciembre.
+  </p>
+</div>
+
+@if (op(); as o) {
+  @if (o.requisicion) {
+    <div class="alert alert-info py-2 small">
+      Para la requisición <a [routerLink]="['/requisiciones', o.requisicion.id]">{{ o.requisicion.folio }}</a> (sin suficiencia): se propone como receptora la
+      línea que no alcanza y el faltante como importe.
+    </div>
+  }
+  @if (!o.captura.abierta) {
+    <div class="alert alert-warning py-2 small">
+      La captura de modificaciones está cerrada; se abre el {{ o.captura.proximaApertura | date: 'dd/MM/yyyy' }}. Solo Control Presupuestal puede registrar.
+    </div>
+  }
+  @if (error()) {
+    <div class="alert alert-danger py-2">{{ error() }}</div>
+  }
+
+  <form class="card" (ngSubmit)="guardar()">
+    <div class="card-body">
+      <div class="mb-3">
+        <label class="form-label d-block">Tipo</label>
+        @for (t of o.tipos | keyvalue: sinOrden; track t.key) {
+          <div class="form-check form-check-inline">
+            <input class="form-check-input" type="radio" name="tipo" [id]="'tipo-' + t.key" [checked]="tipo() === t.key" (change)="cambiarTipo($any(t.key))" />
+            <label class="form-check-label" [for]="'tipo-' + t.key">{{ t.value }}</label>
+          </div>
+        }
+        <small class="text-muted d-block">
+          @switch (tipo()) {
+            @case ('traspaso') {
+              Quita de una línea y da a otra, solo de la misma fuente de financiamiento.
+            }
+            @case ('reduccion') {
+              Solo disminuye una línea (p. ej. no se alcanzó la meta de la Ley de Ingresos).
+            }
+            @case ('ampliacion') {
+              Solo aumenta una línea.
+            }
+          }
+        </small>
+      </div>
+
+      <div class="row g-3">
+        @if (usaOrigen()) {
+          <div [class]="usaDestino() ? 'col-lg-6' : 'col-12'">
+            <div class="border rounded p-3 h-100">
+              <h6>Emisor (de donde sale)</h6>
+              <input class="form-control form-control-sm mb-2" name="buscar-origen" placeholder="Buscar unidad, partida, proyecto…" [ngModel]="buscarOrigen()" (ngModelChange)="buscarOrigen.set($event)" />
+              <select class="form-select form-select-sm" name="origen" size="6" [ngModel]="origen()" (ngModelChange)="elegirOrigen($event)" [class.is-invalid]="errores()['origen']">
+                @for (l of opciones('origen'); track l.clave) {
+                  <option [value]="l.clave">{{ etiqueta(l) }} — disp. {{ money(l.disponible) }}</option>
+                }
+              </select>
+              <div class="invalid-feedback">{{ errores()['origen'] }}</div>
+              <div class="row g-2 mt-1 align-items-end">
+                <div class="col-6">
+                  <label class="form-label small mb-1" for="origen-mes">Periodo</label>
+                  <select id="origen-mes" class="form-select form-select-sm" name="origen-mes" [ngModel]="origenMes()" (ngModelChange)="origenMes.set(+$event)" [class.is-invalid]="errores()['origen_mes']">
+                    @for (m of o.meses | keyvalue: sinOrden; track m.key) {
+                      <option [ngValue]="+m.key" class="text-capitalize">{{ m.value }}</option>
+                    }
+                  </select>
+                </div>
+              </div>
+              @if (lineaOrigen(); as l) {
+                <div class="small mt-2">
+                  <div>Fuente <b>{{ l.fuente }}</b> {{ l.nombre_fuente }}</div>
+                  <div>Disponible anual {{ money(l.disponible) }} → queda <b>{{ money(l.disponible - (importe() ?? 0)) }}</b></div>
+                  <div>
+                    Disponible de {{ o.meses[origenMes() ?? 0] }} {{ money(disponibleMes(l.clave, origenMes())) }} → queda
+                    <b>{{ money((disponibleMes(l.clave, origenMes()) ?? 0) - (importe() ?? 0)) }}</b>
+                  </div>
+                  @if (faltante() > 0) {
+                    <div class="text-danger fw-semibold">El emisor no alcanza: faltan {{ money(faltante()) }}.</div>
+                  }
+                </div>
+              }
+            </div>
+          </div>
+        }
+
+        @if (usaDestino()) {
+          <div [class]="usaOrigen() ? 'col-lg-6' : 'col-12'">
+            <div class="border rounded p-3 h-100">
+              <h6>Receptor (a donde entra)</h6>
+              @if (tipo() === 'traspaso' && lineaOrigen()) {
+                <small class="text-muted d-block mb-1">Solo partidas de la fuente {{ lineaOrigen()!.fuente }}.</small>
+              }
+              <input class="form-control form-control-sm mb-2" name="buscar-destino" placeholder="Buscar unidad, partida, proyecto…" [ngModel]="buscarDestino()" (ngModelChange)="buscarDestino.set($event)" />
+              <select class="form-select form-select-sm" name="destino" size="6" [ngModel]="destino()" (ngModelChange)="destino.set($event)" [class.is-invalid]="errores()['destino']">
+                @for (l of opciones('destino'); track l.clave) {
+                  <option [value]="l.clave">{{ etiqueta(l) }} — vig. {{ money(l.vigente) }}</option>
+                }
+              </select>
+              <div class="invalid-feedback">{{ errores()['destino'] }}</div>
+              <div class="row g-2 mt-1">
+                <div class="col-6">
+                  <label class="form-label small mb-1" for="destino-mes">Periodo</label>
+                  <select id="destino-mes" class="form-select form-select-sm" name="destino-mes" [ngModel]="destinoMes()" (ngModelChange)="destinoMes.set(+$event)" [class.is-invalid]="errores()['destino_mes']">
+                    @for (m of o.meses | keyvalue: sinOrden; track m.key) {
+                      <option [ngValue]="+m.key">{{ m.value }}</option>
+                    }
+                  </select>
+                </div>
+              </div>
+              @if (lineaDestino(); as l) {
+                <div class="small mt-2">
+                  <div>Fuente <b>{{ l.fuente }}</b> {{ l.nombre_fuente }}</div>
+                  <div>Vigente {{ money(l.vigente) }} → queda <b>{{ money(l.vigente + (importe() ?? 0)) }}</b></div>
+                  <div>Disponible de {{ o.meses[destinoMes() ?? 0] }} {{ money(disponibleMes(l.clave, destinoMes())) }} → queda <b>{{ money((disponibleMes(l.clave, destinoMes()) ?? 0) + (importe() ?? 0)) }}</b></div>
+                  @if (traspasoOtraFuente()) {
+                    <div class="text-danger fw-semibold">El traspaso solo puede ser entre partidas de la misma fuente.</div>
+                  }
+                </div>
+              }
+            </div>
+          </div>
+        }
+
+        <div class="col-md-4">
+          <label class="form-label" for="importe">Importe</label>
+          <input id="importe" name="importe" type="number" step="0.01" min="0.01" class="form-control" [ngModel]="importe()" (ngModelChange)="importe.set($event)" [class.is-invalid]="errores()['importe']" />
+          <div class="invalid-feedback">{{ errores()['importe'] }}</div>
+        </div>
+        <div class="col-12">
+          <label class="form-label" for="justificacion">Justificación</label>
+          <textarea id="justificacion" name="justificacion" rows="3" class="form-control" [ngModel]="justificacion()" (ngModelChange)="justificacion.set($event)" [class.is-invalid]="errores()['justificacion']"></textarea>
+          <div class="invalid-feedback">{{ errores()['justificacion'] }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-footer d-flex gap-2">
+      <button type="submit" class="btn btn-primary" [disabled]="guardando() || !o.captura.abierta || faltante() > 0 || traspasoOtraFuente()">
+        {{ guardando() ? 'Registrando…' : 'Registrar modificación' }}
+      </button>
+      <a routerLink="/modificaciones" class="btn btn-outline-secondary">Cancelar</a>
+    </div>
+  </form>
+} @else {
+  <p class="text-muted">Cargando…</p>
+}

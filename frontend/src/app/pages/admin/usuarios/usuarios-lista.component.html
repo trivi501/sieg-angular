@@ -1,0 +1,65 @@
+<app-card cardTitle="Usuarios">
+  @if (mensaje(); as m) {
+    <div class="alert alert-{{ m.tipo }} alert-dismissible py-2">
+      {{ m.texto }}
+      <button type="button" class="btn-close" (click)="mensaje.set(null)"></button>
+    </div>
+  }
+
+  <div class="d-flex flex-wrap gap-2 justify-content-between mb-3">
+    <form class="d-flex gap-2" (ngSubmit)="cargar(1)">
+      <input class="form-control" name="q" placeholder="Buscar por nombre o correo" [(ngModel)]="busqueda" />
+      <button class="btn btn-outline-secondary" type="submit" appAccion="Buscar" icono="search"></button>
+    </form>
+    <a *appCan="'users-create'" routerLink="/usuarios/nuevo" class="btn btn-primary" appAccion="Nuevo usuario" icono="plus"></a>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead>
+        <tr>
+          <th>Nombre</th>
+          <th>Correo</th>
+          <th>Secretaría / Regidor</th>
+          <th>Roles</th>
+          <th class="text-end">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (u of pagina()?.data ?? []; track u.id) {
+          <tr>
+            <td>
+              <div class="fw-semibold">{{ u.name }}</div>
+              @if (u.cargo) {
+                <small class="text-muted">{{ u.cargo }}</small>
+              }
+            </td>
+            <td>{{ u.email }}</td>
+            <td>
+              <small>{{ u.regidor ?? u.unidad ?? '—' }}</small>
+            </td>
+            <td>
+              @for (r of u.roles; track r) {
+                <span class="badge bg-light-primary text-primary me-1">{{ r }}</span>
+              }
+            </td>
+            <td class="text-end text-nowrap">
+              <a *appCan="'users-edit'" [routerLink]="['/usuarios', u.id]" class="btn btn-sm btn-outline-primary" appAccion="Editar" icono="edit"></a>
+              @if (auth.user()?.id !== u.id) {
+                <button *appCan="'users-delete'" type="button" class="btn btn-sm btn-outline-danger" (click)="eliminar(u)" appAccion="Eliminar" icono="delete"></button>
+              }
+            </td>
+          </tr>
+        } @empty {
+          <tr>
+            <td colspan="5" class="text-center text-muted py-4">{{ pagina() ? 'Sin resultados.' : 'Cargando…' }}</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+
+  @if (pagina(); as p) {
+    <app-paginacion [actual]="p.current_page" [ultima]="p.last_page" [total]="p.total" (cambiar)="cargar($event)" />
+  }
+</app-card>

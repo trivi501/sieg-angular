@@ -1,0 +1,269 @@
+@if (orden(); as o) {
+  <div class="card">
+    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <h5 class="mb-0">
+        Orden de compra {{ o.folio }}
+        @if (o.cancelada) {
+          <span class="badge bg-light-dark text-dark">Cancelada</span>
+        }
+      </h5>
+      <div class="d-flex flex-wrap gap-1">
+        @if (puede().imprimirOrden) {
+          <button type="button" class="btn btn-sm btn-outline-secondary" (click)="imprimir()" appAccion="Imprimir orden" icono="printer"></button>
+        }
+        @if (puede().asignarAlmacen) {
+          <button type="button" class="btn btn-sm btn-outline-primary" [disabled]="ocupado()" (click)="asignarAlmacen()" appAccion="Asignar al almacén" icono="inbox"></button>
+        }
+        @if (puede().verAlmacen) {
+          <a [routerLink]="['/almacen', o.id]" class="btn btn-sm btn-outline-primary" appAccion="Ver en almacén" icono="shop"></a>
+        } @else if (o.almacen_asignada_at) {
+          <span class="badge bg-light-secondary text-secondary align-self-center">Asignada al almacén</span>
+        }
+        @if (puede().cambiarProveedor) {
+          <button type="button" class="btn btn-sm btn-outline-primary" (click)="abrir('proveedor')" appAccion="Cambiar proveedor" icono="user-switch"></button>
+        }
+        @if (puede().cambiarFechaOrden) {
+          <button type="button" class="btn btn-sm btn-outline-secondary" (click)="abrir('fecha')" appAccion="Cambiar fecha" icono="calendar"></button>
+        }
+        @if (puede().refacturar) {
+          <button type="button" class="btn btn-sm btn-outline-warning" (click)="abrir('refacturar')" appAccion="Refacturar" icono="sync"></button>
+        }
+        @if (puede().cancelarOrden) {
+          <button type="button" class="btn btn-sm btn-outline-danger" (click)="abrir('cancelar')" appAccion="Cancelar orden" icono="stop"></button>
+        }
+      </div>
+    </div>
+    <div class="card-body">
+      @if (o.cancelada) {
+        <div class="alert alert-secondary py-2 small">
+          Cancelada el {{ o.cancelada_at | date: 'dd/MM/yyyy HH:mm' }}. Motivo: {{ o.motivo_cancelacion }}
+          @if (o.xml_uuid_cancelado) {
+            <span class="d-block">Factura cancelada con la orden: {{ o.xml_uuid_cancelado }}</span>
+          }
+        </div>
+      }
+
+      <div class="row small g-2 mb-3">
+        <div class="col-sm-6"><span class="text-muted d-block">Proveedor</span>{{ o.proveedor }} {{ o.rfc ? '(' + o.rfc + ')' : '' }}</div>
+        <div class="col-sm-3"><span class="text-muted d-block">Fecha</span>{{ o.fecha | date: 'dd/MM/yyyy' }}</div>
+        <div class="col-sm-3"><span class="text-muted d-block">Importe</span>{{ money(o.importe) }}</div>
+        @if (o.observaciones) {
+          <div class="col-12"><span class="text-muted d-block">Observaciones</span>{{ o.observaciones }}</div>
+        }
+      </div>
+
+      <h6 class="mb-2">Factura</h6>
+      @if (o.xml; as x) {
+        <div class="row small g-2">
+          <div class="col-sm-6"><span class="text-muted d-block">Folio fiscal (UUID)</span><code>{{ x.uuid }}</code></div>
+          <div class="col-sm-6"><span class="text-muted d-block">Emisor</span>{{ x.emisor }} ({{ x.rfc_emisor }})</div>
+          <div class="col-sm-3"><span class="text-muted d-block">Serie y folio</span>{{ x.serie_folio ?? '—' }}</div>
+          <div class="col-sm-3"><span class="text-muted d-block">Fecha</span>{{ x.fecha | date: 'dd/MM/yyyy' }}</div>
+          <div class="col-sm-3"><span class="text-muted d-block">Total</span>{{ money(x.total) }}</div>
+          @if (x.isr > 0) {
+            <div class="col-sm-3"><span class="text-muted d-block">ISR retenido</span>{{ money(x.isr) }} · a pagar {{ money(o.importe - x.isr) }}</div>
+          }
+          <div class="col-12 d-flex flex-wrap align-items-center gap-2 mt-2">
+            <span class="badge {{ claseSat(x.sat_estado) }}">SAT: {{ x.sat_estado ?? 'sin verificar' }}</span>
+            @if (x.sat_estatus_cancelacion) {
+              <span class="badge bg-light-warning text-warning">{{ x.sat_estatus_cancelacion }}</span>
+            }
+            @if (x.sat_efos) {
+              <span class="badge bg-danger">Emisor en lista EFOS</span>
+            }
+            @if (x.sat_verificado_at) {
+              <small class="text-muted">verificada el {{ x.sat_verificado_at | date: 'dd/MM/yyyy HH:mm' }}</small>
+            }
+            @if (puede().verificarSat) {
+              <button
+                type="button"
+                class="btn btn-sm btn-outline-primary"
+                [disabled]="ocupado()"
+                [appAccion]="ocupado() ? 'Consultando en el SAT…' : 'Verificar en el SAT'"
+                icono="safety-certificate"
+                (click)="verificarSat()"
+              ></button>
+            }
+            @if (puede().descargarXml) {
+              <button type="button" class="btn btn-sm btn-outline-secondary" (click)="descargarXml()" appAccion="Descargar XML" icono="download"></button>
+            }
+          </div>
+        </div>
+      } @else if (puede().cargarXml) {
+        <p class="small text-muted mb-2">
+          XML del CFDI (3.3 o 4.0). Se rechaza si el total no coincide con lo cotizado, si el emisor no es el proveedor de la orden, si no está
+          timbrado, si ya se cargó en otra orden o si no está vigente en el SAT.
+        </p>
+        <div class="d-flex flex-wrap gap-2">
+          <input #archivoXml type="file" class="form-control w-auto" accept=".xml,text/xml,application/xml" (change)="elegirXml($event)" />
+          <button type="button" class="btn btn-primary" [disabled]="!archivo || ocupado()" (click)="cargarXml(archivoXml)">
+            {{ ocupado() ? 'Verificando en el SAT…' : 'Cargar factura' }}
+          </button>
+        </div>
+        @if (errorXml()) {
+          <div class="alert alert-danger py-2 small mt-2 mb-0">{{ errorXml() }}</div>
+        }
+      } @else {
+        <p class="small text-muted mb-0">Sin factura.</p>
+      }
+
+      <!-- CLC (cuenta por liquidar certificada) -->
+      @if (o.clc) {
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-3 mb-1">
+          <h6 class="mb-0">
+            CLC {{ o.clc }}
+            <span class="badge" [class]="o.clc_cancelada ? 'bg-light-danger text-danger' : o.pago_fecha ? 'bg-light-success text-success' : 'bg-light-primary text-primary'">
+              {{ o.clc_cancelada ? 'Cancelada' : o.clc_estado }}
+            </span>
+          </h6>
+          <div class="d-flex flex-wrap gap-1">
+            @if (puede().imprimirClc) {
+              <button type="button" class="btn btn-sm btn-outline-secondary" (click)="imprimirClc()" appAccion="Imprimir CLC" icono="file-pdf"></button>
+            }
+            @if (puede().cancelarClc) {
+              <button type="button" class="btn btn-sm btn-outline-danger" (click)="abrir('cancelarClc')" appAccion="Cancelar CLC" icono="close-circle"></button>
+            }
+          </div>
+        </div>
+        <div class="row small g-2">
+          <div class="col-sm-4"><span class="text-muted d-block">Generada</span>{{ o.clc_fecha | date: 'dd/MM/yyyy' }}</div>
+          <div class="col-sm-4"><span class="text-muted d-block">A pagar</span>{{ money(o.neto) }}</div>
+          <div class="col-sm-4">
+            <span class="text-muted d-block">Pago</span>
+            @if (o.pago_fecha) {
+              {{ o.pago_fecha | date: 'dd/MM/yyyy' }} · {{ o.pago_forma }} {{ o.pago_referencia }}
+            } @else {
+              —
+            }
+          </div>
+          @if (o.clc_cancelada && o.clc_motivo_cancelacion) {
+            <div class="col-12 text-danger">Motivo de cancelación: {{ o.clc_motivo_cancelacion }}</div>
+          }
+          @if (d().motivoNoCancelarClc; as m) {
+            <div class="col-12 text-muted">No se puede cancelar la CLC: {{ m }}</div>
+          }
+        </div>
+
+        @if (o.movimientos.length) {
+          <h6 class="mt-3 mb-1">Trámite de la CLC</h6>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <tbody>
+                @for (m of o.movimientos; track $index) {
+                  <tr>
+                    <td class="small text-nowrap text-muted">{{ m.fecha | date: 'dd/MM/yyyy HH:mm' }}</td>
+                    <td class="small">{{ m.accion }}</td>
+                    <td class="small">{{ m.estado }}{{ m.relacion ? ' · ' + m.relacion : '' }}</td>
+                    <td class="small">{{ m.usuario }}</td>
+                    <td class="small text-muted">{{ m.observaciones }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      } @else if (puede().generarClc) {
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-3 p-2 border rounded">
+          <span class="small">Factura aceptada: sigue generar la CLC para solicitar el pago al proveedor.</span>
+          <button type="button" class="btn btn-sm btn-primary" (click)="abrir('generarClc')" appAccion="Generar CLC" icono="file-done"></button>
+        </div>
+      }
+
+      @if (o.refacturas.length) {
+        <h6 class="mt-3 mb-1">Refacturas</h6>
+        @for (r of o.refacturas; track $index) {
+          <div class="small border-start border-3 border-warning ps-2 mb-2">
+            {{ r.fecha | date: 'dd/MM/yyyy HH:mm' }} · {{ r.usuario }} · factura anterior {{ r.factura }}
+            @if (r.clc_anterior) {
+              · CLC {{ r.clc_anterior }} → {{ r.clc_nueva ?? 'pendiente de la nueva factura' }}
+            }
+            <span class="d-block text-muted">Motivo: {{ r.motivo }}</span>
+          </div>
+        }
+      }
+    </div>
+  </div>
+} @else if (puede().generarOrden) {
+  <div class="card">
+    <div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <span class="small">Requisición comprometida: sigue asignar el proveedor y generar la orden de compra.</span>
+      <button type="button" class="btn btn-primary" (click)="abrir('generar')">Asignar proveedor y generar orden de compra</button>
+    </div>
+  </div>
+}
+
+<ng-template #dialogoTpl let-modal>
+  @if (dialogo(); as tipo) {
+    <div class="modal-header">
+      <h5 class="modal-title">{{ titulos[tipo].titulo }}</h5>
+      <button type="button" class="btn-close" (click)="modal.dismiss()"></button>
+    </div>
+    <div class="modal-body">
+      <p class="small text-muted">{{ titulos[tipo].texto }}</p>
+      @if (errores()['_general']) {
+        <div class="alert alert-danger py-2 small">{{ errores()['_general'] }}</div>
+      }
+
+      @if (tipo === 'generar' || tipo === 'proveedor') {
+        <label class="form-label" for="proveedor">Proveedor</label>
+        <select id="proveedor" class="form-select" [(ngModel)]="proveedorId" [class.is-invalid]="errores()['proveedor_id']">
+          <option [ngValue]="null">Seleccionar…</option>
+          @for (p of proveedores(); track p.id) {
+            <option [ngValue]="p.id" [disabled]="p.vencido">{{ p.nombre }}{{ p.rfc ? ' — ' + p.rfc : '' }}{{ p.vencido ? ' (vigencia vencida ' + p.vigencia + ')' : '' }}</option>
+          }
+        </select>
+        <div class="invalid-feedback">{{ errores()['proveedor_id'] }}</div>
+        @if (proveedorElegido()?.vigencia; as v) {
+          <small class="text-muted">Vigente en el padrón hasta el {{ v }}.</small>
+        }
+
+        @if (puede().altaProveedor) {
+          @if (altaAbierta()) {
+            <div class="border rounded p-2 mt-2 bg-light">
+              <div class="row g-2">
+                <div class="col-md-7">
+                  <input class="form-control form-control-sm" placeholder="Nombre o razón social" [(ngModel)]="nuevoNombre" />
+                </div>
+                <div class="col-md-3">
+                  <input class="form-control form-control-sm" placeholder="RFC" [(ngModel)]="nuevoRfc" />
+                </div>
+                <div class="col-md-2 d-grid">
+                  <button type="button" class="btn btn-sm btn-primary" (click)="darDeAlta()">Dar de alta</button>
+                </div>
+              </div>
+              @if (errorAlta()) {
+                <div class="text-danger small mt-1">{{ errorAlta() }}</div>
+              }
+            </div>
+          } @else {
+            <button type="button" class="btn btn-link btn-sm px-0" (click)="altaAbierta.set(true)">¿No está? Darlo de alta</button>
+          }
+        }
+      }
+
+      @if (tipo === 'generar' || tipo === 'fecha') {
+        <label class="form-label mt-3" for="fecha-orden">Fecha de la orden</label>
+        <input id="fecha-orden" type="date" class="form-control" [(ngModel)]="fecha" [max]="hoy" [class.is-invalid]="errores()['fecha']" />
+        <div class="invalid-feedback">{{ errores()['fecha'] }}</div>
+      }
+
+      @if (tipo === 'generar') {
+        <label class="form-label mt-3" for="obs-orden">Observaciones</label>
+        <textarea id="obs-orden" rows="2" class="form-control" [(ngModel)]="observaciones"></textarea>
+        <p class="small mt-2 mb-0">Importe: <b>{{ money(d().requisicion.total) }}</b></p>
+      }
+
+      @if (tipo === 'refacturar' || tipo === 'cancelar' || tipo === 'cancelarClc') {
+        <label class="form-label" for="motivo-orden">Motivo</label>
+        <textarea id="motivo-orden" rows="3" class="form-control" [(ngModel)]="motivo" [class.is-invalid]="errores()['motivo']"></textarea>
+        <div class="invalid-feedback">{{ errores()['motivo'] }}</div>
+      }
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-outline-secondary" (click)="modal.dismiss()">Cerrar</button>
+      <button type="button" class="btn {{ titulos[tipo].clase }}" [disabled]="ocupado()" (click)="ejecutar(modal)">
+        {{ ocupado() ? 'Procesando…' : titulos[tipo].boton }}
+      </button>
+    </div>
+  }
+</ng-template>

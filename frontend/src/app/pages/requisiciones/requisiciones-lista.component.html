@@ -1,0 +1,105 @@
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+  <div>
+    @if (bandeja === 'recursos-materiales') {
+      <h4 class="mb-1">Bandeja de Recursos Materiales</h4>
+      <p class="text-muted small mb-0">Requisiciones de todas las secretarías desde que se envían a Recursos Materiales: recibir, cotizar y validar suficiencia.</p>
+    } @else {
+      <h4 class="mb-1">Requisiciones</h4>
+      <p class="text-muted small mb-0">
+        {{ datos()?.veTodas ? 'Requisiciones de todas las secretarías y direcciones.' : 'Requisiciones de tu secretaría o dirección.' }}
+      </p>
+    }
+  </div>
+  @if (bandeja === 'requisiciones') {
+    <a *appCan="'requisiciones-create'" routerLink="/requisiciones/nueva" class="btn btn-primary" appAccion="Nueva requisición" icono="plus"></a>
+  }
+</div>
+
+<div class="card">
+  <div class="card-body">
+    <form class="row g-2 mb-3" (ngSubmit)="cargar(1)">
+      <div class="col-6 col-md-2">
+        <input class="form-control form-control-sm" name="folio" placeholder="Folio" [(ngModel)]="filtros['folio_completo']" />
+      </div>
+      @if (bandeja === 'requisiciones') {
+        <div class="col-6 col-md-3">
+          <input class="form-control form-control-sm" name="unidad" placeholder="Secretaría o dirección" [(ngModel)]="filtros['unidad']" />
+        </div>
+      }
+      <div class="col-12 col-md-3">
+        <input class="form-control form-control-sm" name="concepto" placeholder="Concepto" [(ngModel)]="filtros['concepto']" />
+      </div>
+      <div class="col-6 col-md-2">
+        <select class="form-select form-select-sm" name="estado" [(ngModel)]="filtros['estado']" (ngModelChange)="cargar(1)">
+          <option value="">Todos los estados</option>
+          @for (e of datos()?.estados ?? []; track e.id) {
+            <option [value]="e.id">{{ e.descripcion }}</option>
+          }
+        </select>
+      </div>
+      @if (bandeja === 'requisiciones') {
+        <div class="col-6 col-md-1">
+          <input class="form-control form-control-sm" name="anio" placeholder="Año" [(ngModel)]="filtros['año']" />
+        </div>
+      }
+      <div class="col-12 col-md-auto d-flex gap-1">
+        <button class="btn btn-sm btn-primary" type="submit" appAccion="Filtrar" icono="search"></button>
+        <button class="btn btn-sm btn-outline-secondary" type="button" (click)="limpiar()" appAccion="Limpiar filtros" icono="clear"></button>
+      </div>
+    </form>
+
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Folio</th>
+            <th>Fecha</th>
+            <th>Secretaría o dirección</th>
+            <th>Concepto</th>
+            <th>Estado</th>
+            <th class="text-end">Total</th>
+            <th>Orden / CLC</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (r of datos()?.data ?? []; track r.id) {
+            <tr>
+              <td>
+                <a [routerLink]="['/requisiciones', r.id]" class="fw-semibold">{{ r.folio }}</a>
+              </td>
+              <td class="text-nowrap">{{ r.solicitado | date: 'dd/MM/yyyy' }}</td>
+              <td class="concepto" [title]="r.unidad ?? ''">{{ r.unidad }}</td>
+              <td class="concepto" [title]="r.concepto ?? ''">{{ r.concepto }}</td>
+              <td>
+                <span class="badge {{ claseEstado(r.estado_id) }}">{{ r.estado }}</span>
+                @if (r.extemporanea_pendiente) {
+                  <span class="badge bg-light-warning text-warning d-block mt-1">Extemporánea por autorizar</span>
+                } @else if (r.extemporanea) {
+                  <span class="badge bg-light-secondary text-secondary d-block mt-1">Extemporánea autorizada</span>
+                }
+                @if (r.suficiencia === false) {
+                  <span class="badge bg-light-danger text-danger d-block mt-1">Sin suficiencia</span>
+                }
+              </td>
+              <td class="text-end font-monospace">{{ money(r.total) }}</td>
+              <td class="small">
+                {{ r.orden ?? '—' }}
+                @if (r.clc) {
+                  <span class="d-block text-muted">{{ r.clc }} · {{ r.clc_estado }}</span>
+                }
+              </td>
+            </tr>
+          } @empty {
+            <tr>
+              <td colspan="7" class="text-center text-muted py-4">{{ datos() ? 'Sin requisiciones.' : 'Cargando…' }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
+    @if (datos(); as d) {
+      <app-paginacion [actual]="d.current_page" [ultima]="d.last_page" [total]="d.total" (cambiar)="cargar($event)" />
+    }
+  </div>
+</div>

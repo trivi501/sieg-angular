@@ -1,0 +1,100 @@
+@if (error()) {
+  <div class="card">
+    <div class="card-body">
+      <p>{{ error() }}</p>
+      <a routerLink="/presupuesto" class="btn btn-outline-secondary" appAccion="Volver al presupuesto" icono="arrow-left"></a>
+    </div>
+  </div>
+}
+
+@if (detalle(); as d) {
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+    <div>
+      <a routerLink="/presupuesto" class="small text-muted">← Presupuesto</a>
+      <h4 class="mb-1 mt-1">Partida {{ d.linea.PARTIDA }} — {{ d.linea.NOMBRE_PARTIDA }}</h4>
+      <p class="text-muted small mb-0">
+        {{ d.linea.CLAVE }} {{ d.linea.UNIDAD_ADMINISTRATIVA }} · Fuente {{ d.linea.CLAVE3 }} {{ d.linea.FUENTE_DE_FINANCIAMIENTO }} · Proyecto
+        {{ d.linea.CLAVE6 }} {{ d.linea.PROYECTO }}
+      </p>
+      <p class="text-muted small mb-0">Capítulo {{ d.linea.capitulo ?? '—' }} · Tipo de gasto {{ d.linea.TIPO_DE_GASTO ?? '—' }}</p>
+    </div>
+    @if (puedeEditar()) {
+      <a [routerLink]="['/presupuesto', id, 'editar']" class="btn btn-primary" appAccion="Editar" icono="edit"></a>
+    }
+  </div>
+
+  @if (d.diferencia !== 0) {
+    <div class="alert alert-warning py-2">
+      La distribución mensual no suma el importe total: {{ d.diferencia > 0 ? 'faltan' : 'sobran' }}
+      {{ money(d.diferencia < 0 ? -d.diferencia : d.diferencia) }}. Edita la línea para corregirla.
+    </div>
+  }
+
+  <div class="row g-2 mb-3">
+    @for (m of momentos(); track m.etiqueta) {
+      <div class="col-6 col-md-3">
+        <div class="card mb-0 h-100">
+          <div class="card-body py-2 px-3">
+            <small class="text-muted d-block">{{ m.etiqueta }}</small>
+            <span class="fw-semibold" [class.text-danger]="(m.valor ?? 0) < 0">{{ money(m.valor) }}</span>
+          </div>
+        </div>
+      </div>
+    }
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h5 class="mb-0">Saldos mensuales {{ d.ejercicio }}</h5>
+      <small class="text-muted">
+        Disponible del mes = saldo corrido + calendario ± modificado del mes − comprometido en el mes (por fecha de suficiencia). El saldo
+        corrido es lo que quedó disponible el mes anterior.
+      </small>
+    </div>
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Mes</th>
+              <th class="text-end">Saldo corrido</th>
+              <th class="text-end">Calendario</th>
+              <th class="text-end">Modificado</th>
+              <th class="text-end">Comprometido</th>
+              <th class="text-end">Disponible del mes</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (m of d.meses; track m.mes) {
+              <tr [class.table-primary]="m.mes === d.mesActual" [class.text-muted]="m.mes > d.mesActual">
+                <td class="text-capitalize">
+                  {{ m.nombre }}
+                  @if (m.mes === d.mesActual) {
+                    <span class="badge bg-primary ms-1">actual</span>
+                  }
+                </td>
+                <td class="text-end font-monospace">{{ money(m.saldo_corrido) }}</td>
+                <td class="text-end font-monospace" [title]="'Calendario autorizado: ' + money(calendario(m.mes))">{{ money(m.asignado) }}</td>
+                <td class="text-end font-monospace" [class.text-success]="m.modificado > 0" [class.text-danger]="m.modificado < 0">
+                  {{ money(m.modificado) }}
+                </td>
+                <td class="text-end font-monospace">{{ money(m.comprometido) }}</td>
+                <td class="text-end font-monospace fw-semibold" [class.text-danger]="m.disponible < 0">{{ money(m.disponible) }}</td>
+              </tr>
+            }
+          </tbody>
+          <tfoot>
+            <tr class="fw-semibold">
+              <td>Total del año</td>
+              <td></td>
+              <td class="text-end font-monospace">{{ money(totalMeses().asignado) }}</td>
+              <td class="text-end font-monospace">{{ money(totalMeses().modificado) }}</td>
+              <td class="text-end font-monospace">{{ money(totalMeses().comprometido) }}</td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  </div>
+}

@@ -1,0 +1,135 @@
+@if (datos(); as d) {
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+    <div>
+      <h4 class="mb-1">Modificaciones presupuestales</h4>
+      <p class="text-muted small mb-0">Traspasos (misma fuente), reducciones y ampliaciones. Las autoriza el Jefe de Control Presupuestal.</p>
+    </div>
+    @if (auth.can('modificaciones-create')) {
+      @if (d.captura.abierta) {
+        <a routerLink="/modificaciones/nueva" class="btn btn-primary" appAccion="Nueva modificación" icono="plus"></a>
+      }
+    }
+  </div>
+
+  @if (auth.can('modificaciones-create')) {
+    @if (d.captura.siempre) {
+      <div class="alert alert-info py-2 small">
+        Periodo de captura de las áreas: del {{ d.captura.inicio | date: 'dd/MM/yyyy' }} al {{ d.captura.ultimoDia | date: 'dd/MM/yyyy' }}. Tú puedes registrar
+        modificaciones todo el mes.
+      </div>
+    } @else if (d.captura.abierta) {
+      <div class="alert alert-success py-2 small">
+        Captura abierta hasta el {{ d.captura.ultimoDia | date: 'dd/MM/yyyy' }}{{ d.captura.calendario ? '' : ' (' + d.captura.diasCierre + ' días antes del fin de mes)' }}.
+      </div>
+    } @else {
+      <div class="alert alert-warning py-2 small">
+        La captura de modificaciones está cerrada (del {{ d.captura.inicio | date: 'dd/MM/yyyy' }} al {{ d.captura.ultimoDia | date: 'dd/MM/yyyy' }}). Se abre el
+        {{ d.captura.proximaApertura | date: 'dd/MM/yyyy' }}.
+      </div>
+    }
+  }
+
+  @if (mensaje(); as m) {
+    <div class="alert alert-{{ m.tipo }} alert-dismissible py-2">
+      {{ m.texto }}
+      <button type="button" class="btn-close" (click)="mensaje.set(null)"></button>
+    </div>
+  }
+
+  <div class="card">
+    <div class="card-body">
+      <form class="row g-2 mb-3" (ngSubmit)="cargar(1)">
+        <div class="col-6 col-md-2"><input class="form-control form-control-sm" name="folio" placeholder="Folio" [(ngModel)]="filtros['folio']" /></div>
+        <div class="col-6 col-md-2">
+          <select class="form-select form-select-sm" name="tipo" [(ngModel)]="filtros['tipo']" (ngModelChange)="cargar(1)">
+            <option value="">Todos los tipos</option>
+            @for (t of d.tipos | keyvalue: sinOrden; track t.key) {
+              <option [value]="t.key">{{ t.value }}</option>
+            }
+          </select>
+        </div>
+        <div class="col-6 col-md-2">
+          <select class="form-select form-select-sm" name="estado" [(ngModel)]="filtros['estado']" (ngModelChange)="cargar(1)">
+            <option value="">Todos los estados</option>
+            <option value="pendiente">Pendiente</option>
+            <option value="autorizada">Autorizada</option>
+            <option value="rechazada">Rechazada</option>
+          </select>
+        </div>
+        <div class="col-6 col-md-3"><input class="form-control form-control-sm" name="partida" placeholder="Partida o descripción" [(ngModel)]="filtros['partida']" /></div>
+        <div class="col-auto"><button type="submit" class="btn btn-sm btn-primary" appAccion="Filtrar" icono="search"></button></div>
+      </form>
+
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Folio</th>
+              <th>Tipo</th>
+              <th>Emisor (origen)</th>
+              <th>Receptor (destino)</th>
+              <th class="text-end">Importe</th>
+              <th>Estado</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (m of d.data; track m.id) {
+              <tr>
+                <td class="text-nowrap">
+                  <a [routerLink]="['/modificaciones', m.id]" class="fw-semibold">{{ m.folio_completo }}</a>
+                  <small class="d-block text-muted">{{ m.created_at | date: 'dd/MM/yyyy' }} · {{ m.solicitante }}</small>
+                </td>
+                <td>{{ d.tipos[m.tipo] }}</td>
+                <td class="linea">
+                  @if (m.origen_descripcion) {
+                    {{ m.origen_descripcion }}
+                    <small class="d-block text-muted">
+                      {{ mes(m.origen_mes) ? 'Periodo ' + mes(m.origen_mes) + ' · ' : '' }}disponible {{ money(m.origen_disponible) }}
+                      @if (m.origen_disponible_mes !== null && m.origen_disponible_mes !== undefined) {
+                        · del mes {{ money(m.origen_disponible_mes) }}
+                      }
+                    </small>
+                  } @else {
+                    —
+                  }
+                </td>
+                <td class="linea">
+                  @if (m.destino_descripcion) {
+                    {{ m.destino_descripcion }}
+                    @if (mes(m.destino_mes)) {
+                      <small class="d-block text-muted">Periodo {{ mes(m.destino_mes) }}</small>
+                    }
+                  } @else {
+                    —
+                  }
+                </td>
+                <td class="text-end font-monospace">{{ money(m.importe) }}</td>
+                <td>
+                  <span class="badge text-capitalize {{ claseEstado(m.estado) }}">{{ m.estado }}</span>
+                  @if (m.autorizador) {
+                    <small class="d-block text-muted">{{ m.autorizador }}</small>
+                  }
+                </td>
+                <td class="text-end text-nowrap">
+                  @if (m.estado === 'pendiente' && auth.can('modificaciones-autorizar')) {
+                    <button type="button" class="btn btn-sm btn-success" (click)="resolver(m, 'autorizar')" appAccion="Aceptar" icono="check"></button>
+                    <button type="button" class="btn btn-sm btn-outline-danger" (click)="resolver(m, 'rechazar')" appAccion="Rechazar" icono="close"></button>
+                  }
+                </td>
+              </tr>
+            } @empty {
+              <tr>
+                <td colspan="7" class="text-center text-muted py-4">Sin modificaciones.</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <app-paginacion [actual]="d.current_page" [ultima]="d.last_page" [total]="d.total" (cambiar)="cargar($event)" />
+    </div>
+  </div>
+} @else {
+  <p class="text-muted">Cargando…</p>
+}

@@ -1,0 +1,121 @@
+<div class="mb-3">
+  <h4 class="mb-1">Órdenes de compra</h4>
+  <p class="text-muted small mb-0">Órdenes generadas a las requisiciones y en qué van. Para cargar factura, generar CLC o cancelar, abre su requisición.</p>
+</div>
+
+@if (error()) {
+  <div class="alert alert-danger alert-dismissible py-2">
+    {{ error() }}
+    <button type="button" class="btn-close" (click)="error.set('')"></button>
+  </div>
+}
+
+<div class="card">
+  <div class="card-body">
+    <form class="row g-2 mb-3 align-items-end" (ngSubmit)="cargar(1)">
+      <div class="col-md-4">
+        <label class="form-label small mb-1" for="buscar">Buscar</label>
+        <input id="buscar" name="buscar" class="form-control form-control-sm" placeholder="O.C., proveedor, RFC, requisición, concepto, CLC…" [(ngModel)]="filtros['buscar']" />
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small mb-1" for="situacion">Situación</label>
+        <select id="situacion" name="situacion" class="form-select form-select-sm" [(ngModel)]="filtros['situacion']" (ngModelChange)="cargar(1)">
+          <option value="">Todas</option>
+          <option value="vigentes">Vigentes</option>
+          <option value="sin_factura">Sin factura</option>
+          <option value="con_factura">Con factura, sin CLC</option>
+          <option value="en_clc">En CLC (sin pagar)</option>
+          <option value="pagadas">Pagadas</option>
+          <option value="canceladas">Canceladas</option>
+        </select>
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small mb-1" for="desde">Desde</label>
+        <input id="desde" name="desde" type="date" class="form-control form-control-sm" [(ngModel)]="filtros['desde']" />
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small mb-1" for="hasta">Hasta</label>
+        <input id="hasta" name="hasta" type="date" class="form-control form-control-sm" [(ngModel)]="filtros['hasta']" />
+      </div>
+      <div class="col-md-2 d-flex gap-1">
+        <button type="submit" class="btn btn-sm btn-primary" appAccion="Filtrar" icono="search"></button>
+        @if (hayFiltros()) {
+          <button type="button" class="btn btn-sm btn-outline-secondary" (click)="limpiar()" appAccion="Limpiar filtros" icono="clear"></button>
+        }
+      </div>
+    </form>
+
+    @if (datos(); as d) {
+      <p class="small text-muted mb-2">{{ d.totales.ordenes }} órdenes · importe vigente {{ money(d.totales.importe) }}</p>
+
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Orden</th>
+              <th>Fecha</th>
+              <th>Proveedor</th>
+              <th>Requisición</th>
+              <th class="text-end">Importe</th>
+              <th>Factura</th>
+              <th>CLC</th>
+              <th>Situación</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (o of d.data; track o.id) {
+              <tr [class.text-muted]="o.cancelada">
+                <td class="text-nowrap fw-semibold">{{ o.folio }}</td>
+                <td class="text-nowrap">{{ o.fecha | date: 'dd/MM/yyyy' }}</td>
+                <td>
+                  {{ o.proveedor ?? '—' }}
+                  <small class="d-block text-muted">{{ o.rfc }}</small>
+                </td>
+                <td style="max-width: 260px">
+                  <a [routerLink]="['/requisiciones', o.requisicion_id]">{{ o.requisicion }}</a>
+                  <small class="d-block text-muted text-truncate">{{ o.concepto }}</small>
+                  <small class="d-block text-muted text-truncate">{{ o.unidad }}</small>
+                </td>
+                <td class="text-end font-monospace">{{ money(o.importe) }}</td>
+                <td class="text-nowrap">
+                  {{ o.factura ?? '—' }}
+                  @if (o.sat_estado) {
+                    <small class="d-block" [class.text-success]="o.sat_estado === 'Vigente'" [class.text-danger]="o.sat_estado !== 'Vigente'">SAT: {{ o.sat_estado }}</small>
+                  }
+                  @if (o.almacen) {
+                    <small class="d-block text-muted">En almacén</small>
+                  }
+                </td>
+                <td class="text-nowrap">
+                  {{ o.clc ?? '—' }}
+                  @if (o.clc_estado) {
+                    <small class="d-block text-muted">{{ o.clc_estado }}</small>
+                  }
+                </td>
+                <td>
+                  <span class="badge {{ situacion(o).clase }}">{{ situacion(o).texto }}</span>
+                  @if (o.motivo_cancelacion) {
+                    <small class="d-block text-muted">{{ o.motivo_cancelacion }}</small>
+                  }
+                </td>
+                <td class="text-nowrap text-end">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" (click)="pdf(o)" appAccion="PDF de la orden" icono="file-pdf"></button>
+                  <a class="btn btn-sm btn-outline-secondary" [routerLink]="['/requisiciones', o.requisicion_id]" appAccion="Abrir requisición" icono="arrow-right"></a>
+                </td>
+              </tr>
+            } @empty {
+              <tr>
+                <td colspan="9" class="text-center text-muted py-4">Sin órdenes de compra.</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <app-paginacion [actual]="d.current_page" [ultima]="d.last_page" [total]="d.total" (cambiar)="cargar($event)" />
+    } @else {
+      <p class="text-muted mb-0">Cargando…</p>
+    }
+  </div>
+</div>

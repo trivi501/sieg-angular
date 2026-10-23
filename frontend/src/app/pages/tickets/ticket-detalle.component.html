@@ -1,0 +1,97 @@
+@if (error()) {
+  <div class="card">
+    <div class="card-body">
+      <p>{{ error() }}</p>
+      <a routerLink="/tickets" class="btn btn-outline-secondary" appAccion="Volver" icono="arrow-left"></a>
+    </div>
+  </div>
+}
+
+@if (d(); as d) {
+  @let t = d.ticket;
+  <div class="mb-3">
+    <a routerLink="/tickets" class="small text-muted">← Tickets de soporte</a>
+    <h4 class="mb-1 mt-1">
+      #{{ t.id }} {{ t.title }}
+      <span class="badge align-middle {{ clasePrioridad(t.priority) }}">{{ prioridades[t.priority] }}</span>
+      <span class="badge align-middle {{ claseEstado(t.status) }}">{{ estados[t.status] }}</span>
+    </h4>
+    <p class="text-muted small mb-0">Reportó {{ t.user }} el {{ t.created_at | date: 'dd/MM/yyyy HH:mm' }}</p>
+  </div>
+
+  @if (mensaje(); as m) {
+    <div class="alert alert-{{ m.tipo }} alert-dismissible py-2">
+      {{ m.texto }}
+      <button type="button" class="btn-close" (click)="mensaje.set(null)"></button>
+    </div>
+  }
+
+  <div class="row g-3">
+    <div class="col-lg-8">
+      <div class="card">
+        <div class="card-body">
+          <p style="white-space: pre-wrap" class="mb-2">{{ t.description }}</p>
+          @if (t.url) {
+            <p class="small mb-2"><span class="text-muted">Pantalla:</span> <code>{{ t.url }}</code></p>
+          }
+          @if (t.image) {
+            <a [href]="t.image" target="_blank" rel="noopener"><img [src]="t.image" alt="Captura del problema" class="img-fluid border rounded" style="max-height: 360px" /></a>
+          }
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h5 class="mb-0">Comentarios</h5></div>
+        <div class="card-body">
+          @for (c of t.comments; track c.id) {
+            <div class="border-start border-3 ps-2 mb-3">
+              <div class="d-flex justify-content-between gap-2">
+                <b class="small">{{ c.user }}</b>
+                <small class="text-muted">{{ c.created_at | date: 'dd/MM/yyyy HH:mm' }}</small>
+              </div>
+              <div class="small" style="white-space: pre-wrap">{{ c.comment }}</div>
+            </div>
+          } @empty {
+            <p class="text-muted small">Sin comentarios.</p>
+          }
+          @if (auth.can('tickets-create')) {
+            <textarea rows="3" class="form-control" placeholder="Escribe un comentario" [(ngModel)]="comentario" [class.is-invalid]="errorComentario()"></textarea>
+            <div class="invalid-feedback">{{ errorComentario() }}</div>
+            <button type="button" class="btn btn-primary btn-sm mt-2" [disabled]="ocupado()" (click)="comentar()">Comentar</button>
+          }
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-4">
+      <div class="card">
+        <div class="card-body">
+          <label class="form-label small" for="estado">Estado</label>
+          @if (d.canChangeStatus) {
+            <select id="estado" class="form-select form-select-sm mb-3" [ngModel]="t.status" [disabled]="ocupado()" (ngModelChange)="actualizar('status', $event)">
+              @for (e of estados | keyvalue: sinOrden; track e.key) {
+                <option [value]="e.key">{{ e.value }}</option>
+              }
+            </select>
+          } @else {
+            <p class="mb-3">{{ estados[t.status] }}</p>
+          }
+
+          <label class="form-label small" for="asignado">Asignado a</label>
+          @if (d.canAssign) {
+            <select id="asignado" class="form-select form-select-sm" [ngModel]="t.assigned_to" [disabled]="ocupado()" (ngModelChange)="actualizar('assigned_to', $event)">
+              <option [ngValue]="null">Sin asignar</option>
+              @for (u of d.users; track u.id) {
+                <option [ngValue]="u.id">{{ u.name }}</option>
+              }
+            </select>
+          } @else {
+            <p class="mb-0">{{ t.assigned ?? 'Sin asignar' }}</p>
+          }
+        </div>
+      </div>
+    </div>
+  </div>
+} @else if (!error()) {
+  <p class="text-muted">Cargando…</p>
+}

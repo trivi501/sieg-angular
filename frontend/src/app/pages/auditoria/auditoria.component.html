@@ -1,0 +1,153 @@
+<div class="mb-3">
+  <h4 class="mb-1">Bitácora de auditoría</h4>
+  <p class="text-muted small mb-0">
+    Altas, modificaciones, bajas, reactivaciones y eliminaciones de todo el sistema, y los accesos (inicio y cierre de sesión e intentos fallidos). Las
+    contraseñas se registran como [oculto].
+  </p>
+</div>
+
+<div class="card">
+  <div class="card-body">
+    @if (datos(); as d) {
+      <form class="row g-2 mb-3 align-items-end" (ngSubmit)="cargar(1)">
+        <div class="col-md-3">
+          <label class="form-label small mb-1" for="tipo">Módulo</label>
+          <select id="tipo" name="tipo" class="form-select form-select-sm" [(ngModel)]="filtros['tipo']" (ngModelChange)="cargar(1)">
+            <option value="">Todos</option>
+            @for (t of d.tipos; track t.valor) {
+              <option [value]="t.valor">{{ t.etiqueta }}</option>
+            }
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small mb-1" for="usuario">Usuario</label>
+          <select id="usuario" name="usuario" class="form-select form-select-sm" [(ngModel)]="filtros['usuario']" (ngModelChange)="cargar(1)">
+            <option value="">Todos</option>
+            @for (u of d.usuarios; track u.id) {
+              <option [value]="u.id">{{ u.name }}</option>
+            }
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small mb-1" for="accion">Acción</label>
+          <select id="accion" name="accion" class="form-select form-select-sm text-capitalize" [(ngModel)]="filtros['accion']" (ngModelChange)="cargar(1)">
+            <option value="">Todas</option>
+            @for (a of d.acciones; track a) {
+              <option [value]="a">{{ a }}</option>
+            }
+          </select>
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label small mb-1" for="desde">Desde</label>
+          <input id="desde" name="desde" type="date" class="form-control form-control-sm" [(ngModel)]="filtros['desde']" />
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label small mb-1" for="hasta">Hasta</label>
+          <input id="hasta" name="hasta" type="date" class="form-control form-control-sm" [(ngModel)]="filtros['hasta']" />
+        </div>
+        <div class="col-md-1 d-flex gap-1">
+          <button type="submit" class="btn btn-sm btn-primary" appAccion="Filtrar" icono="search"></button>
+        </div>
+      </form>
+
+      @if (filtros['registro'] || filtros['lote']) {
+        <div class="alert alert-info py-2 small d-flex justify-content-between align-items-center">
+          <span>{{ filtros['registro'] ? 'Todo lo del registro #' + filtros['registro'] : 'Todos los movimientos del lote' }} ({{ d.total }})</span>
+        </div>
+      }
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <small class="text-muted">{{ d.total }} movimientos</small>
+        @if (hayFiltros()) {
+          <button type="button" class="btn btn-sm btn-outline-secondary" (click)="limpiar()" appAccion="Quitar filtros" icono="clear"></button>
+        }
+      </div>
+
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Usuario</th>
+              <th>Acción</th>
+              <th>Módulo / registro</th>
+              <th>Cambios</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (m of d.data; track m.id) {
+              <tr>
+                <td class="text-nowrap">
+                  {{ m.fecha | date: 'dd/MM/yyyy HH:mm:ss' }}
+                  @if (m.ip) {
+                    <small class="d-block text-muted">{{ m.ip }}</small>
+                  }
+                </td>
+                <td>{{ m.usuario ?? '—' }}</td>
+                <td><span class="badge text-capitalize {{ claseAccion(m.accion) }}">{{ m.accion }}</span></td>
+                <td>
+                  @if (m.enlace) {
+                    <a [routerLink]="m.enlace">{{ m.tipo }}</a>
+                  } @else {
+                    {{ m.tipo }}
+                  }
+                  @if (m.registro) {
+                    <button type="button" class="btn btn-link btn-sm p-0 ms-1 align-baseline" title="Todo lo de este registro" (click)="verRegistro(m)">#{{ m.registro }}</button>
+                  }
+                  @if (m.descripcion) {
+                    <small class="d-block text-muted">
+                      @if (m.lote) {
+                        <button type="button" class="btn btn-link btn-sm p-0 align-baseline text-start" title="Todo el lote" (click)="verLote(m)">{{ m.descripcion }}</button>
+                      } @else {
+                        {{ m.descripcion }}
+                      }
+                    </small>
+                  }
+                </td>
+                <td style="min-width: 260px">
+                  @let cambios = campos(m);
+                  @if (cambios.length) {
+                    @if (cambios.length <= 3 || abiertos().has(m.id)) {
+                      <table class="cambios mb-0">
+                        @for (c of cambios; track c.campo) {
+                          <tr>
+                            <td class="text-muted">{{ c.etiqueta }}</td>
+                            <td>
+                              @if (m.antes) {
+                                <span class="text-danger text-decoration-line-through">{{ c.antes }}</span>
+                              }
+                              @if (m.antes && m.despues) {
+                                →
+                              }
+                              @if (m.despues) {
+                                <span class="text-success">{{ c.despues }}</span>
+                              }
+                            </td>
+                          </tr>
+                        }
+                      </table>
+                    }
+                    @if (cambios.length > 3) {
+                      <button type="button" class="btn btn-link btn-sm p-0" (click)="alternar(m.id)">
+                        {{ abiertos().has(m.id) ? 'Ocultar' : 'Ver ' + cambios.length + ' campos' }}
+                      </button>
+                    }
+                  } @else {
+                    <span class="text-muted">—</span>
+                  }
+                </td>
+              </tr>
+            } @empty {
+              <tr>
+                <td colspan="5" class="text-center text-muted py-4">Sin movimientos.</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <app-paginacion [actual]="d.current_page" [ultima]="d.last_page" [total]="d.total" (cambiar)="cargar($event)" />
+    } @else {
+      <p class="text-muted mb-0">Cargando…</p>
+    }
+  </div>
+</div>

@@ -1,0 +1,56 @@
+@if (auth.user(); as user) {
+  <div class="mb-3">
+    <h4 class="mb-1">Hola, {{ user.name }}</h4>
+    <p class="text-muted small mb-0">{{ user.unidad ?? 'Sin secretaría asignada' }}{{ user.cargo ? ' · ' + user.cargo : '' }}</p>
+  </div>
+}
+
+@switch (resumen()) {
+  @case (undefined) {
+    <p class="text-muted">Cargando…</p>
+  }
+  @case (null) {
+    <div class="card">
+      <div class="card-body text-muted">No tienes acceso a requisiciones ni presupuesto.</div>
+    </div>
+  }
+  @default {
+    @let r = resumen()!;
+    @if (r.verPresupuesto) {
+      <div class="card">
+        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+          <h5 class="mb-0">Presupuesto de egresos</h5>
+          <small class="text-muted">
+            {{ r.lineas }} líneas · {{ r.lineasSinDisponible }} sin disponible ·
+            <a routerLink="/requisiciones/gasto">Ejercicio y control del gasto</a>
+          </small>
+        </div>
+        <div class="card-body">
+          <div class="row g-3">
+            @for (m of momentos; track m.key) {
+              <div class="col-6 col-md-3" [title]="m.ayuda">
+                <small class="text-muted d-block">{{ m.titulo }}</small>
+                <span class="fs-6 fw-semibold" [class.text-danger]="(r.totales[m.key] ?? 0) < 0">{{ money(r.totales[m.key]) }}</span>
+                <small class="d-block text-muted" style="font-size: 11px">{{ m.ayuda }}</small>
+              </div>
+            }
+          </div>
+        </div>
+      </div>
+    }
+
+    <div class="row g-3">
+      @for (t of tarjetas(); track t.titulo) {
+        <div class="col-sm-6 col-xl">
+          <a [routerLink]="t.ruta" [queryParams]="t.query" class="card h-100 text-reset text-decoration-none mb-0 tarjeta">
+            <div class="card-body">
+              <small class="text-muted d-block">{{ t.titulo }}</small>
+              <span class="fs-3 fw-bold" [class.text-primary]="t.valor > 0" [class.text-muted]="t.valor === 0">{{ t.valor }}</span>
+              <small class="d-block text-muted">{{ t.ayuda }}</small>
+            </div>
+          </a>
+        </div>
+      }
+    </div>
+  }
+}

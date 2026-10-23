@@ -1,0 +1,198 @@
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+  <div>
+    <h4 class="mb-1">Mantenimiento vehicular</h4>
+    <p class="text-muted small mb-0">
+      Se recibe el vehículo en el taller, se hace su requisición a nombre de la secretaría de resguardo y al terminar se entrega (vuelve a "En servicio").
+    </p>
+  </div>
+  <button type="button" class="btn btn-primary" [disabled]="!datos()?.vehiculos?.length" (click)="abrirRecibir()" appAccion="Recibir vehículo" icono="plus"></button>
+</div>
+
+@if (datos() && !datos()!.vehiculos.length) {
+  <div class="alert alert-info py-2 small">
+    No hay vehículos por recibir: deben estar activos en el <a routerLink="/catalogos/vehiculos">padrón vehicular</a>, con secretaría de resguardo, y no estar ya en el taller.
+    @if (datos()!.noDisponibles.length) {
+      <ul class="mb-0 mt-1">
+        @for (v of datos()!.noDisponibles; track v.texto) {
+          <li>{{ v.texto }}: {{ v.motivo }}</li>
+        }
+      </ul>
+    }
+  </div>
+}
+
+@if (mensaje(); as m) {
+  <div class="alert alert-{{ m.tipo }} alert-dismissible py-2">
+    {{ m.texto }}
+    <button type="button" class="btn-close" (click)="mensaje.set(null)"></button>
+  </div>
+}
+
+<div class="card">
+  <div class="card-body">
+    <form class="row g-2 mb-3" (ngSubmit)="cargar(1)">
+      <div class="col-md-5">
+        <input class="form-control form-control-sm" name="buscar" placeholder="Folio, económico, placas, marca, secretaría o falla" [(ngModel)]="buscar" />
+      </div>
+      <div class="col-md-3">
+        <select class="form-select form-select-sm" name="estado" [(ngModel)]="estado" (ngModelChange)="cargar(1)">
+          <option value="">Todos</option>
+          <option value="en_taller">En taller</option>
+          <option value="entregado">Entregados</option>
+        </select>
+      </div>
+      <div class="col-auto"><button type="submit" class="btn btn-sm btn-primary" appAccion="Buscar" icono="search"></button></div>
+    </form>
+
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Folio</th>
+            <th>Vehículo</th>
+            <th>Recepción</th>
+            <th>Falla o servicio</th>
+            <th>Requisición</th>
+            <th>Estado</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (m of datos()?.data ?? []; track m.id) {
+            <tr>
+              <td class="fw-semibold text-nowrap">{{ m.folio }}</td>
+              <td>
+                {{ m.vehiculo }}
+                <small class="d-block text-muted">{{ m.secretaria }}{{ m.area ? ' · ' + m.area : '' }}</small>
+              </td>
+              <td class="text-nowrap">
+                {{ m.fecha_recepcion | date: 'dd/MM/yyyy' }}
+                <small class="d-block text-muted">{{ m.kilometraje !== null ? m.kilometraje + ' km · ' : '' }}{{ m.tipo }}</small>
+                @if (m.entrega) {
+                  <small class="d-block text-muted">lo trajo {{ m.entrega }}</small>
+                }
+              </td>
+              <td style="max-width: 260px">{{ m.descripcion }}</td>
+              <td class="text-nowrap">
+                @if (m.requisicion_id) {
+                  <a [routerLink]="['/requisiciones', m.requisicion_id]">{{ m.requisicion }}</a>
+                  <small class="d-block text-muted">{{ m.requisicion_estado }}</small>
+                } @else if (m.estado === 'en_taller' && datos()!.puedeRequisicion) {
+                  <a [routerLink]="['/requisiciones/nueva']" [queryParams]="{ mantenimiento: m.id }" class="btn btn-sm btn-outline-primary" appAccion="Hacer requisición" icono="file-add"></a>
+                } @else {
+                  —
+                }
+              </td>
+              <td>
+                @if (m.estado === 'en_taller') {
+                  <span class="badge bg-light-warning text-warning">En taller</span>
+                } @else {
+                  <span class="badge bg-light-success text-success">Entregado</span>
+                  <small class="d-block text-muted">{{ m.fecha_entrega | date: 'dd/MM/yyyy' }} · {{ m.recibe_entrega }}</small>
+                }
+              </td>
+              <td class="text-end">
+                @if (m.estado === 'en_taller') {
+                  <button type="button" class="btn btn-sm btn-outline-success" (click)="abrirEntregar(m)" appAccion="Entregar vehículo" icono="car"></button>
+                }
+              </td>
+            </tr>
+          } @empty {
+            <tr>
+              <td colspan="7" class="text-center text-muted py-4">{{ datos() ? 'Sin mantenimientos.' : 'Cargando…' }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
+    @if (datos(); as d) {
+      <app-paginacion [actual]="d.current_page" [ultima]="d.last_page" [total]="d.total" (cambiar)="cargar($event)" />
+    }
+  </div>
+</div>
+
+<ng-template #recibirTpl let-modal>
+  <div class="modal-header">
+    <h5 class="modal-title">Recibir vehículo en el taller</h5>
+    <button type="button" class="btn-close" (click)="modal.dismiss()"></button>
+  </div>
+  <div class="modal-body">
+    @if (errores()['_general']) {
+      <div class="alert alert-danger py-2 small">{{ errores()['_general'] }}</div>
+    }
+    <div class="row g-3">
+      <div class="col-12">
+        <label class="form-label" for="vehiculo">Vehículo</label>
+        <select id="vehiculo" class="form-select" [(ngModel)]="recepcion.vehiculo_id" [class.is-invalid]="errores()['vehiculo_id']">
+          <option [ngValue]="null">Seleccionar…</option>
+          @for (v of datos()?.vehiculos ?? []; track v.id) {
+            <option [ngValue]="v.id">{{ v.texto }}</option>
+          }
+        </select>
+        <div class="invalid-feedback">{{ errores()['vehiculo_id'] }}</div>
+        @if (vehiculoElegido(); as v) {
+          <small class="text-muted">Resguardo: {{ v.secretaria }}{{ v.area ? ' · ' + v.area : '' }}. Su requisición irá a nombre de esta secretaría.</small>
+        }
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" for="fecha-rec">Fecha de recepción</label>
+        <input id="fecha-rec" type="date" class="form-control" [max]="hoy" [(ngModel)]="recepcion.fecha_recepcion" [class.is-invalid]="errores()['fecha_recepcion']" />
+        <div class="invalid-feedback">{{ errores()['fecha_recepcion'] }}</div>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" for="km">Kilometraje</label>
+        <input id="km" type="number" min="0" class="form-control" [(ngModel)]="recepcion.kilometraje" [class.is-invalid]="errores()['kilometraje']" />
+        <div class="invalid-feedback">{{ errores()['kilometraje'] }}</div>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" for="tipo">Tipo</label>
+        <select id="tipo" class="form-select" [(ngModel)]="recepcion.tipo">
+          @for (t of datos()?.tipos ?? {} | keyvalue: sinOrden; track t.key) {
+            <option [value]="t.key">{{ t.value }}</option>
+          }
+        </select>
+      </div>
+      <div class="col-12">
+        <label class="form-label" for="falla">Falla o servicio solicitado</label>
+        <textarea id="falla" rows="3" class="form-control" [(ngModel)]="recepcion.descripcion" [class.is-invalid]="errores()['descripcion']"></textarea>
+        <div class="invalid-feedback">{{ errores()['descripcion'] }}</div>
+      </div>
+      <div class="col-12">
+        <label class="form-label" for="entrega">Quién lo trae</label>
+        <input id="entrega" class="form-control" [(ngModel)]="recepcion.entrega" />
+      </div>
+    </div>
+  </div>
+  <div class="modal-footer">
+    <button type="button" class="btn btn-outline-secondary" (click)="modal.dismiss()">Cerrar</button>
+    <button type="button" class="btn btn-primary" [disabled]="ocupado()" (click)="recibir(modal)">{{ ocupado() ? 'Registrando…' : 'Recibir' }}</button>
+  </div>
+</ng-template>
+
+<ng-template #entregarTpl let-modal>
+  @if (entregando(); as m) {
+    <div class="modal-header">
+      <h5 class="modal-title">Entregar {{ m.folio }}</h5>
+      <button type="button" class="btn-close" (click)="modal.dismiss()"></button>
+    </div>
+    <div class="modal-body">
+      <p class="small text-muted">{{ m.vehiculo }} · recibido el {{ m.fecha_recepcion | date: 'dd/MM/yyyy' }}. Al entregarlo vuelve a "En servicio".</p>
+      @if (errores()['_general']) {
+        <div class="alert alert-danger py-2 small">{{ errores()['_general'] }}</div>
+      }
+      <label class="form-label" for="fecha-ent">Fecha de entrega</label>
+      <input id="fecha-ent" type="date" class="form-control mb-3" [max]="hoy" [(ngModel)]="entrega.fecha_entrega" [class.is-invalid]="errores()['fecha_entrega']" />
+      <div class="invalid-feedback mt-n2 mb-2">{{ errores()['fecha_entrega'] }}</div>
+      <label class="form-label" for="recibe">Quién lo recibe</label>
+      <input id="recibe" class="form-control mb-3" [(ngModel)]="entrega.recibe_entrega" [class.is-invalid]="errores()['recibe_entrega']" />
+      <div class="invalid-feedback mt-n2 mb-2">{{ errores()['recibe_entrega'] }}</div>
+      <label class="form-label" for="trabajo">Trabajo realizado</label>
+      <textarea id="trabajo" rows="3" class="form-control" [(ngModel)]="entrega.observaciones_entrega"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-outline-secondary" (click)="modal.dismiss()">Cerrar</button>
+      <button type="button" class="btn btn-success" [disabled]="ocupado()" (click)="entregar(modal)">{{ ocupado() ? 'Registrando…' : 'Entregar' }}</button>
+    </div>
+  }
+</ng-template>

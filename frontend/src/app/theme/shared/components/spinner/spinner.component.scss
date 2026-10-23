@@ -1,0 +1,78 @@
+#http-loader {
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 100%;
+  position: fixed;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  animation: loader-aparecer 0.2s ease-out;
+}
+
+.loader-bg {
+  position: absolute;
+  inset: 0;
+  background-color: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(2px);
+}
+
+.loader-caja {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+// Anillo guinda con la punta en el tono del emblema.
+.loader-anillo {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 4px solid rgba(122, 52, 70, 0.15);
+  border-top-color: #7a3446;
+  border-right-color: #c4956f;
+  animation: loader-girar 0.9s linear infinite;
+}
+
+.loader-emblema {
+  height: 64px;
+  width: auto;
+  animation: loader-latido 1.4s ease-in-out infinite;
+}
+
+.loader-texto {
+  position: relative;
+  color: #7a3446;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+@keyframes loader-girar {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes loader-latido {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(0.88);
+    opacity: 0.7;
+  }
+}
+
+@keyframes loader-aparecer {
+  from {
+    opacity: 0;
+  }
+}

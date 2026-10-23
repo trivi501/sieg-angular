@@ -1,0 +1,14 @@
+// This file is intentionally left empty to allow customers to add custom CSS if needed.
+
+.avatar-iniciales {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 35px;
+  height: 35px;
+  border-radius: 50%;
+  background: var(--bs-primary, #7a3446);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}

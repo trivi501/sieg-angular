@@ -1,0 +1,14 @@
+<nav>
+  <div class="navbar-wrapper">
+    <div class="m-header">
+      <a [routerLink]="['/inicio']" class="b-brand">
+        <img src="assets/images/logo-guadalupe.png" alt="Ayuntamiento de Guadalupe 2024-2027" class="logo-guadalupe" />
+      </a>
+    </div>
+    <app-nav-content
+      (NavCollapsedMob)="navCollapseMob()"
+      (SubmenuCollapse)="navSubmenuCollapse()"
+      class="scroll-div w-100 compact"
+    />
+  </div>
+</nav>

@@ -1,0 +1,315 @@
+@if (error()) {
+  <div class="card">
+    <div class="card-body">
+      <p>{{ error() }}</p>
+      <a routerLink="/requisiciones" class="btn btn-outline-secondary" appAccion="Volver a requisiciones" icono="arrow-left"></a>
+    </div>
+  </div>
+}
+
+@if (d(); as d) {
+  @let r = d.requisicion;
+
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+    <div>
+      <a routerLink="/requisiciones" class="small text-muted">← Requisiciones</a>
+      <h4 class="mb-1 mt-1">
+        Requisición {{ r.folio }}
+        <span class="badge {{ claseEstado(r.estado_id) }} align-middle ms-1">{{ r.estado }}</span>
+        @if (r.suficiencia === true) {
+          <span class="badge bg-light-success text-success align-middle">Con suficiencia</span>
+        } @else if (r.suficiencia === false) {
+          <span class="badge bg-light-danger text-danger align-middle">Sin suficiencia</span>
+        }
+      </h4>
+      <p class="text-muted small mb-0">{{ r.unidad }}{{ r.departamento ? ' · ' + r.departamento : '' }}</p>
+    </div>
+  </div>
+
+  @if (mensaje(); as m) {
+    <div class="alert alert-{{ m.tipo }} alert-dismissible py-2">
+      {{ m.texto }}
+      <button type="button" class="btn-close" (click)="mensaje.set(null)"></button>
+    </div>
+  }
+  @if (aviso()) {
+    <div class="alert alert-warning alert-dismissible py-2">
+      {{ aviso() }}
+      <button type="button" class="btn-close" (click)="aviso.set(null)"></button>
+    </div>
+  }
+
+  @if (r.extemporanea) {
+    <div class="alert py-2 small d-flex flex-wrap justify-content-between align-items-center gap-2" [class.alert-warning]="r.extemporanea_pendiente" [class.alert-success]="!r.extemporanea_pendiente">
+      @if (r.extemporanea_pendiente) {
+        <span>
+          <b>Extemporánea:</b> se capturó fuera del periodo ({{ d.periodoCaptura[0] }} al {{ d.periodoCaptura[1] }}). La Subdirección Administrativa debe
+          autorizarla antes de enviarla a revisión.
+        </span>
+        @if (d.puede.extemporanea) {
+          <button type="button" class="btn btn-sm btn-warning" (click)="abrir('extemporanea')" appAccion="Autorizar extemporánea" icono="check-circle"></button>
+        }
+      } @else {
+        <span>Extemporánea autorizada por {{ r.extemporanea_autorizador ?? '—' }} el {{ r.extemporanea_autorizada_at | date: 'dd/MM/yyyy HH:mm' }}.</span>
+      }
+    </div>
+  }
+
+  @if (r.cancelada_at) {
+    <div class="alert alert-secondary py-2 small">
+      <b>Cancelada</b> el {{ r.cancelada_at | date: 'dd/MM/yyyy HH:mm' }} por {{ r.cancelada_por ?? '—' }}. Motivo: {{ r.motivo_cancelacion }}
+    </div>
+  }
+
+  @if (d.mantenimiento; as m) {
+    <div class="alert alert-info py-2 small">Mantenimiento vehicular {{ m.folio }}: {{ m.vehiculo }}{{ m.area ? ' · ' + m.area : '' }} ({{ m.estado }}).</div>
+  }
+
+  <!-- Acciones -->
+  @if (algunaAccion()) {
+    <div class="card mb-3">
+      <div class="card-body d-flex flex-wrap gap-2">
+        @if (d.puede.editar) {
+          <a [routerLink]="['/requisiciones', id, 'editar']" class="btn btn-outline-primary" appAccion="Editar" icono="edit"></a>
+        }
+        @if (d.puede.enviar) {
+          <button
+            type="button"
+            class="btn btn-primary"
+            [disabled]="r.extemporanea_pendiente"
+            [title]="r.extemporanea_pendiente ? 'Extemporánea: falta la autorización de la Subdirección Administrativa' : ''"
+            (click)="abrir('enviar')"
+          >
+            Enviar a revisión
+          </button>
+        }
+        @if (d.puede.validar) {
+          <button type="button" class="btn btn-primary" (click)="abrir('aprobar')" appAccion="Válida" icono="check"></button>
+          <button type="button" class="btn btn-danger" (click)="abrir('rechazar')" appAccion="No válida" icono="close"></button>
+        }
+        @if (d.puede.imprimir) {
+          <button type="button" class="btn btn-outline-secondary" (click)="imprimir()" appAccion="Imprimir formato (FUR)" icono="printer"></button>
+        }
+        @if (d.puede.enviarRecursos) {
+          <button type="button" class="btn btn-primary" (click)="abrir('recursos')" appAccion="Enviar a Recursos Materiales" icono="send"></button>
+        }
+        @if (d.puede.recibir) {
+          <button type="button" class="btn btn-primary" (click)="abrir('recibir')" appAccion="Recibido: iniciar cotización" icono="inbox"></button>
+        }
+        @if (d.puede.cotizar) {
+          <a [routerLink]="['/requisiciones', id, 'editar']" class="btn btn-outline-primary" appAccion="Editar cotización" icono="dollar"></a>
+        }
+        @if (d.puede.suficiencia) {
+          <button
+            type="button"
+            class="btn btn-primary"
+            [disabled]="!(r.total > 0)"
+            [title]="r.total > 0 ? '' : 'Primero captura los precios de la cotización'"
+            (click)="abrir('suficiencia')"
+          >
+            Validar suficiencia presupuestal
+          </button>
+        }
+        @if (d.puede.modificacion) {
+          <a routerLink="/modificaciones/nueva" [queryParams]="{ requisicion: id }" class="btn btn-outline-primary" appAccion="Solicitar modificación presupuestal" icono="swap"></a>
+        }
+        @if (d.puede.devolver) {
+          <button type="button" class="btn btn-outline-warning" (click)="abrir('devolver')" appAccion="Regresar al área" icono="rollback"></button>
+        }
+        @if (d.puede.cambiarFecha && !r.cancelada_at) {
+          <button type="button" class="btn btn-outline-secondary" (click)="abrir('fecha')" appAccion="Cambiar fecha" icono="calendar"></button>
+        }
+        @if (d.puede.cancelar) {
+          <button type="button" class="btn btn-outline-danger" (click)="abrir('cancelar')" appAccion="Cancelar requisición" icono="stop"></button>
+        }
+        @if (d.puede.eliminar) {
+          <button type="button" class="btn btn-outline-danger" (click)="eliminar()" appAccion="Eliminar" icono="delete"></button>
+        }
+      </div>
+    </div>
+  }
+
+  <div class="row g-3">
+    <div class="col-lg-8">
+      <div class="card">
+        <div class="card-header"><h5 class="mb-0">Datos</h5></div>
+        <div class="card-body">
+          <div class="row small g-2 mb-3">
+            <div class="col-sm-4"><span class="text-muted d-block">Fecha de trámite</span>{{ r.solicitado | date: 'dd/MM/yyyy' }}</div>
+            <div class="col-sm-4"><span class="text-muted d-block">Capturada</span>{{ r.registro | date: 'dd/MM/yyyy HH:mm' }}</div>
+            <div class="col-sm-4"><span class="text-muted d-block">Ejercicio</span>{{ r['año'] }}</div>
+            <div class="col-12"><span class="text-muted d-block">Concepto</span>{{ r.concepto }}</div>
+          </div>
+
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead>
+                <tr>
+                  <th>Partida / Proyecto / Fuente</th>
+                  <th class="text-end">Cant.</th>
+                  <th>Descripción</th>
+                  <th class="text-end">P. unitario</th>
+                  <th class="text-end">IVA</th>
+                  <th class="text-end">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (c of r.detalles; track c.id) {
+                  <tr>
+                    <td class="small">
+                      <span [title]="nombre('partidas', c.partida)">{{ c.partida }} {{ nombre('partidas', c.partida) }}</span>
+                      <span class="d-block text-muted" [title]="nombre('proyectos', c.proyecto)">Proy. {{ c.proyecto }} · Fte. {{ c.fuente }}</span>
+                    </td>
+                    <td class="text-end">{{ c.cantidad }}</td>
+                    <td>{{ c.descripcion }}</td>
+                    <td class="text-end font-monospace">{{ c.precio_unitario === null ? '—' : money(c.precio_unitario) }}</td>
+                    <td class="text-end font-monospace">{{ c.iva === null ? '—' : money(c.iva) }}</td>
+                    <td class="text-end font-monospace">{{ c.total === null ? '—' : money(c.total) }}</td>
+                  </tr>
+                }
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="5" class="text-end">Subtotal</td>
+                  <td class="text-end font-monospace">{{ money(r.sub_total) }}</td>
+                </tr>
+                <tr>
+                  <td colspan="5" class="text-end">IVA</td>
+                  <td class="text-end font-monospace">{{ money(r.iva) }}</td>
+                </tr>
+                <tr class="fw-semibold">
+                  <td colspan="5" class="text-end">Total</td>
+                  <td class="text-end font-monospace">{{ money(r.total) }}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Suficiencia -->
+      @if (r.estado_id >= 6 && r.estado_id !== 12 && r.total > 0) {
+        <div class="card">
+          <div class="card-header">
+            <h5 class="mb-0">Suficiencia presupuestal</h5>
+            <small class="text-muted">
+              @if (r.suficiencia_fecha) {
+                Validada el {{ r.suficiencia_fecha | date: 'dd/MM/yyyy HH:mm' }}.
+              } @else {
+                Aún sin validar: así se compara hoy lo cotizado contra el disponible.
+              }
+            </small>
+          </div>
+          <div class="card-body">
+            <div class="table-responsive">
+              <table class="table table-sm align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th>Línea</th>
+                    <th class="text-end">Requerido</th>
+                    <th class="text-end">Vigente</th>
+                    <th class="text-end">Comprometido</th>
+                    <th class="text-end">Disponible</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (p of d.validacion.partidas; track p.clave) {
+                    <tr>
+                      <td class="small">
+                        {{ p.partida }} {{ p.nombre_partida }}
+                        <span class="d-block text-muted">Proy. {{ p.proyecto }} · Fte. {{ p.fuente }}</span>
+                      </td>
+                      <td class="text-end font-monospace">{{ money(p.requerido) }}</td>
+                      <td class="text-end font-monospace">{{ money(p.vigente) }}</td>
+                      <td class="text-end font-monospace">{{ money(p.comprometido) }}</td>
+                      <td class="text-end font-monospace" [class.text-danger]="p.disponible < 0">{{ money(p.disponible) }}</td>
+                      <td>
+                        @if (!p.existe) {
+                          <span class="badge bg-light-danger text-danger">No está en el presupuesto</span>
+                        } @else if (p.suficiente) {
+                          <span class="badge bg-light-success text-success">Alcanza</span>
+                        } @else {
+                          <span class="badge bg-light-danger text-danger">Faltan {{ money(p.faltante) }}</span>
+                        }
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+            @if (r.suficiencia === false) {
+              <p class="small text-danger mt-2 mb-0">
+                Sin suficiencia: se necesita una modificación presupuestal autorizada para la partida que falta y volver a validar.
+              </p>
+            }
+          </div>
+        </div>
+      }
+
+      <!-- Orden de compra y factura -->
+      <app-orden-compra [d]="d" (actualizado)="ordenActualizada($event)" />
+
+      @if (d.modificaciones.length) {
+        <div class="card">
+          <div class="card-header"><h5 class="mb-0">Modificaciones presupuestales</h5></div>
+          <div class="card-body">
+            @for (m of d.modificaciones; track m.id) {
+              <div class="small">
+                <a [routerLink]="['/modificaciones', m.id]">{{ m.folio_completo }}</a> · {{ m.tipo }} · {{ m.estado }} · {{ money(m.importe) }}
+              </div>
+            }
+          </div>
+        </div>
+      }
+    </div>
+
+    <div class="col-lg-4">
+      <div class="card">
+        <div class="card-header"><h5 class="mb-0">Bitácora</h5></div>
+        <div class="card-body">
+          @for (b of r.bitacora; track b.id) {
+            <div class="border-start border-3 ps-2 mb-3">
+              <div class="d-flex justify-content-between gap-2">
+                <span class="badge bg-light-primary text-primary">{{ b.estado }}</span>
+                <small class="text-muted">{{ b.fecha | date: 'dd/MM/yyyy HH:mm' }}</small>
+              </div>
+              <div class="small mt-1">{{ b.observaciones }}</div>
+            </div>
+          } @empty {
+            <p class="text-muted small mb-0">Sin movimientos.</p>
+          }
+        </div>
+      </div>
+    </div>
+  </div>
+} @else if (!error()) {
+  <p class="text-muted">Cargando…</p>
+}
+
+<ng-template #accionTpl let-modal>
+  @if (accion(); as a) {
+    <div class="modal-header">
+      <h5 class="modal-title">{{ a.titulo }}</h5>
+      <button type="button" class="btn-close" (click)="modal.dismiss()"></button>
+    </div>
+    <div class="modal-body">
+      <p class="small text-muted">{{ a.texto }}</p>
+      @if (a.motivo !== undefined) {
+        <label class="form-label" for="motivo">Motivo</label>
+        <textarea id="motivo" rows="3" class="form-control" [(ngModel)]="motivo"></textarea>
+      }
+      @if (a.fecha) {
+        <label class="form-label" for="fecha-tramite">Fecha de trámite</label>
+        <input id="fecha-tramite" type="date" class="form-control" [(ngModel)]="fecha" />
+      }
+      @if (errorAccion()) {
+        <div class="alert alert-danger py-2 small mt-3 mb-0">{{ errorAccion() }}</div>
+      }
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-outline-secondary" (click)="modal.dismiss()">Cerrar</button>
+      <button type="button" class="btn {{ a.clase }}" [disabled]="ocupado()" (click)="ejecutar(modal)">{{ ocupado() ? 'Procesando…' : a.boton }}</button>
+    </div>
+  }
+</ng-template>
