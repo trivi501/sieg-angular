@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\SupportTicketController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\VehiculoMantenimientoController;
+use App\Http\Middleware\PermisoCatalogo;
 use Illuminate\Support\Facades\Route;
 
 // Cada ruta exige su permiso, igual que en routes/settings.php de SIEG.
@@ -153,16 +154,17 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('modificaciones-presupuestales/{modificacion}/rechazar', [ModificacionPresupuestalController::class, 'rechazar'])->middleware('permission:modificaciones-autorizar');
     });
 
-    // Catálogos generales (App\Catalogos\Catalogos). El middleware catalogo:<accion> exige
-    // "{prefijo}-<accion>" del catálogo de la URL (p. ej. catalogos-vehiculos-edit).
+    // Catálogos generales (App\Catalogos\Catalogos). PermisoCatalogo:<accion> exige "{prefijo}-<accion>"
+    // del catálogo de la URL (p. ej. catalogos-vehiculos-edit). El listado de catálogos no lleva middleware:
+    // CatalogoController::inicio ya devuelve solo los que el usuario puede ver.
     Route::get('catalogos', [CatalogoController::class, 'inicio']);
-    Route::get('catalogos/{catalogo}/definicion', [CatalogoController::class, 'definicion'])->middleware('catalogo:index');
-    Route::get('catalogos/{catalogo}', [CatalogoController::class, 'index'])->middleware('catalogo:index');
-    Route::post('catalogos/{catalogo}', [CatalogoController::class, 'store'])->middleware('catalogo:create');
-    Route::get('catalogos/{catalogo}/plantilla', [CatalogoController::class, 'plantilla'])->middleware('catalogo:import');
-    Route::post('catalogos/{catalogo}/importar/previa', [CatalogoController::class, 'previa'])->middleware('catalogo:import');
-    Route::post('catalogos/{catalogo}/importar', [CatalogoController::class, 'importar'])->middleware('catalogo:import');
-    Route::put('catalogos/{catalogo}/{registro}', [CatalogoController::class, 'update'])->middleware('catalogo:edit');
-    Route::post('catalogos/{catalogo}/{registro}/estado', [CatalogoController::class, 'estado'])->middleware('catalogo:delete');
-    Route::get('catalogos/{catalogo}/{registro}/historial', [CatalogoController::class, 'historial'])->middleware('catalogo:index');
+    Route::get('catalogos/{catalogo}/definicion', [CatalogoController::class, 'definicion'])->middleware(PermisoCatalogo::class.':index');
+    Route::get('catalogos/{catalogo}', [CatalogoController::class, 'index'])->middleware(PermisoCatalogo::class.':index');
+    Route::post('catalogos/{catalogo}', [CatalogoController::class, 'store'])->middleware(PermisoCatalogo::class.':create');
+    Route::get('catalogos/{catalogo}/plantilla', [CatalogoController::class, 'plantilla'])->middleware(PermisoCatalogo::class.':import');
+    Route::post('catalogos/{catalogo}/importar/previa', [CatalogoController::class, 'previa'])->middleware(PermisoCatalogo::class.':import');
+    Route::post('catalogos/{catalogo}/importar', [CatalogoController::class, 'importar'])->middleware(PermisoCatalogo::class.':import');
+    Route::put('catalogos/{catalogo}/{registro}', [CatalogoController::class, 'update'])->middleware(PermisoCatalogo::class.':edit');
+    Route::post('catalogos/{catalogo}/{registro}/estado', [CatalogoController::class, 'estado'])->middleware(PermisoCatalogo::class.':delete');
+    Route::get('catalogos/{catalogo}/{registro}/historial', [CatalogoController::class, 'historial'])->middleware(PermisoCatalogo::class.':index');
 });
