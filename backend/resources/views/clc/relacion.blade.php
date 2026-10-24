@@ -28,9 +28,6 @@
         tr.total td { border-bottom: none; border-top: 1.5px solid #000; font-weight: bold; }
 
         .observaciones { margin-top: 10px; font-size: 8.5pt; }
-        table.firmas { width: 100%; border-collapse: collapse; margin-top: 60px; }
-        table.firmas td { width: 50%; text-align: center; font-size: 8.5pt; padding: 0 30px; vertical-align: top; }
-        .firma-linea { border-top: 1px solid #000; padding-top: 3px; line-height: 1.4; }
 
         .pie { position: fixed; bottom: -9mm; left: 0; right: 0; font-size: 7pt; color: #444; }
     </style>
@@ -69,9 +66,7 @@
         <thead>
             <tr>
                 <th style="width: 4%;">#</th>
-                <th style="width: 13%;">CLC</th>
-                <th style="width: 12%;">O.C.</th>
-                <th style="width: 11%;">Requisición</th>
+                <th style="width: 15%;">CLC</th>
                 <th>Unidad administrativa</th>
                 <th>Proveedor</th>
                 <th class="num" style="width: 12%;">Importe</th>
@@ -84,8 +79,6 @@
                 <tr>
                     <td>{{ $i + 1 }}</td>
                     <td>{{ $o->clc_folio_completo }}</td>
-                    <td>{{ $o->folio_completo }}</td>
-                    <td>{{ $o->requisicion?->folio_completo }}</td>
                     <td>{{ $u ? trim($u->clave.' '.$u->nombre) : '—' }}</td>
                     <td>{{ $o->proveedor?->nombre }}</td>
                     <td class="num">${{ number_format((float) $o->importe, 2) }}</td>
@@ -99,7 +92,7 @@
                 </tr>
             @endforeach
             <tr class="total">
-                <td colspan="6" class="num">TOTAL:</td>
+                <td colspan="4" class="num">TOTAL:</td>
                 <td class="num">${{ number_format($relacion->ordenes->sum(fn ($o) => (float) $o->importe), 2) }}</td>
                 <td></td>
             </tr>
@@ -109,20 +102,5 @@
     @if ($relacion->observaciones)
         <div class="observaciones"><strong>Observaciones:</strong> {{ $relacion->observaciones }}</div>
     @endif
-
-    <table class="firmas">
-        <tr>
-            <td>
-                <div class="firma-linea">
-                    ENTREGA<br>{{ mb_strtoupper($relacion->usuario?->nombreConTitulo() ?? '') }}<br>{{ mb_strtoupper($de) }}
-                </div>
-            </td>
-            <td>
-                <div class="firma-linea">
-                    RECIBE<br>&nbsp;<br>{{ mb_strtoupper($para) }}
-                </div>
-            </td>
-        </tr>
-    </table>
 </body>
 </html>

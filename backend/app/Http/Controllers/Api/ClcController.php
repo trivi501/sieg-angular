@@ -127,12 +127,12 @@ class ClcController extends Controller
         ]);
     }
 
-    /** Documento de la relación: las CLC que se envían de un área a otra, con firmas de quien entrega y quien recibe. */
+    /** Documento de la relación: las CLC que se envían de un área a otra (sin O.C., requisición ni firmas). */
     public function relacionPdf(Request $request, ClcRelacion $relacion)
     {
         abort_unless(TramiteClc::veTodo($request->user()) || $request->user()->can('clc-sindicatura'), 403);
 
-        $relacion->load(['usuario:id,name,titulo', 'ordenes.proveedor:id,nombre', 'ordenes.requisicion:id_tb_egreso_requisicion,folio_completo,id_cat_egreso_unidad_administrativa',
+        $relacion->load(['ordenes.proveedor:id,nombre', 'ordenes.requisicion:id_tb_egreso_requisicion,id_cat_egreso_unidad_administrativa',
             'ordenes.requisicion.catEgresoUnidadAdministrativa:id_cat_egreso_unidad_administrativa,clave,nombre']);
 
         $pdf = Pdf::loadView('clc.relacion', ['relacion' => $relacion, 'areas' => TramiteClc::AREAS])->setPaper('letter');
