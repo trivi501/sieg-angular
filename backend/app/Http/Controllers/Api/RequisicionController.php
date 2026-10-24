@@ -356,7 +356,8 @@ class RequisicionController extends Controller
 
         return response()->json([
             'unidades' => $this->unidadesParaFront($unidades),
-            'lineas' => $this->lineasParaCaptura($unidades),
+            // Mantenimiento vehicular: solo sus partidas.
+            'lineas' => $this->lineasParaCaptura($unidades, $mantenimiento ? VehiculoMantenimiento::PARTIDAS : null),
             'unidadDefault' => ! self::veTodas($user) || $mantenimiento ? $unidades->first()?->id_cat_egreso_unidad_administrativa : null,
             'mantenimiento' => $mantenimiento ? [
                 'id' => $mantenimiento->id,
@@ -395,11 +396,13 @@ class RequisicionController extends Controller
         $unidades = $unidadesQuery->orderBy('nombre')->get(['id_cat_egreso_unidad_administrativa', 'clave', 'nombre']);
 
         $requisicion->load('tbEgresoRequisicionDetalles');
+        // Al editar una requisición de mantenimiento vehicular solo se ofrecen sus partidas (al cotizar no se eligen).
+        $deMantenimiento = ! $esCotizacion && VehiculoMantenimiento::where('id_tb_egreso_requisicion', $requisicion->id_tb_egreso_requisicion)->exists();
 
         return response()->json([
             'cotizacion' => $esCotizacion,
             'unidades' => $this->unidadesParaFront($unidades),
-            'lineas' => $this->lineasParaCaptura($unidades),
+            'lineas' => $this->lineasParaCaptura($unidades, $deMantenimiento ? VehiculoMantenimiento::PARTIDAS : null),
             'requisicion' => [
                 'id' => $requisicion->id_tb_egreso_requisicion,
                 'folio' => $requisicion->folio_completo,
@@ -428,10 +431,11 @@ class RequisicionController extends Controller
      * Líneas de presupuesto (fuente + proyecto + partida) de las unidades dadas, con su disponible,
      * para el selector de cada concepto.
      */
-    private function lineasParaCaptura($unidades): array
+    private function lineasParaCaptura($unidades, ?array $soloPartidas = null): array
     {
         return app(PresupuestoService::class)
             ->lineas($unidades->pluck('clave')->map(fn ($c) => trim((string) $c))->all())
+            ->when($soloPartidas !== null, fn ($lineas) => $lineas->filter(fn ($l) => in_array((string) $l['partida'], $soloPartidas, true)))
             ->map(fn ($l) => collect($l)->only([
                 'clave', 'unidad_clave', 'fuente', 'nombre_fuente', 'proyecto', 'nombre_proyecto', 'partida', 'nombre_partida', 'disponible',
             ]))
@@ -533,6 +537,20 @@ class RequisicionController extends Controller
      * Cada concepto capturado debe ir a una línea (fuente + proyecto + partida) que exista
      * en el presupuesto de la unidad administrativa elegida.
      */
+    /** La requisición de un mantenimiento vehicular solo admite las partidas de VehiculoMantenimiento::PARTIDAS. */
+    private function validarPartidasMantenimiento(array $filas): void
+    {
+        $errores = [];
+        foreach ($filas as $i => $fila) {
+            if (! in_array((string) ($fila['partida'] ?? ''), VehiculoMantenimiento::PARTIDAS, true)) {
+                $errores["filas.{$i}.partida"] = 'En un mantenimiento vehicular solo se permiten las partidas '.implode(', ', VehiculoMantenimiento::PARTIDAS).'.';
+            }
+        }
+        if ($errores) {
+            throw ValidationException::withMessages($errores);
+        }
+    }
+
     private function validarLineasPresupuesto(array $filas, ?EgresoUnidadAdministrativa $unidad): void
     {
         $existentes = PresupuestoEgreso::where('CLAVE', $unidad?->clave)
@@ -626,6 +644,9 @@ class RequisicionController extends Controller
 
         $unidad = EgresoUnidadAdministrativa::find($validated['id_cat_egreso_unidad_administrativa']);
         $this->validarLineasPresupuesto($validated['filas'] ?? [], $unidad);
+        if ($mantenimiento) {
+            $this->validarPartidasMantenimiento($validated['filas'] ?? []);
+        }
         $prefijo = $unidad?->prefijo ?: 'REQ';
 
         [$filasCalculadas, $totales] = $this->calcularFilas($validated['filas'] ?? [], (bool) ($validated['incluye_iva'] ?? false));
@@ -755,6 +776,9 @@ class RequisicionController extends Controller
         }
 
         $this->validarLineasPresupuesto($validated['filas'] ?? [], EgresoUnidadAdministrativa::find($validated['id_cat_egreso_unidad_administrativa']));
+        if (VehiculoMantenimiento::where('id_tb_egreso_requisicion', $requisicion->id_tb_egreso_requisicion)->exists()) {
+            $this->validarPartidasMantenimiento($validated['filas'] ?? []);
+        }
 
         [$filasCalculadas, $totales] = $this->calcularFilas($validated['filas'] ?? [], (bool) ($validated['incluye_iva'] ?? false));
 

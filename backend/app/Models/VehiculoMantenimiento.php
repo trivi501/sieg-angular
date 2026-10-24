@@ -14,6 +14,9 @@ class VehiculoMantenimiento extends Model
 
     public const ESTADOS = ['en_taller' => 'En taller', 'entregado' => 'Entregado'];
 
+    /** Únicas partidas permitidas en la requisición de un mantenimiento vehicular. */
+    public const PARTIDAS = ['2961', '2981', '3551', '3571', '2614'];
+
     protected $table = 'vehiculo_mantenimientos';
 
     protected $fillable = [

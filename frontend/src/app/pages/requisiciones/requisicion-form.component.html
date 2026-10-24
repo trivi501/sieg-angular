@@ -30,6 +30,7 @@
 @if (mantenimiento(); as m) {
   <div class="alert alert-info py-2 small">
     Mantenimiento {{ m.folio }}: {{ m.vehiculo }}{{ m.area ? ' · ' + m.area : '' }}. La requisición va a nombre de la secretaría de resguardo del vehículo.
+    <span class="d-block mt-1">Solo se pueden usar las partidas de vehículos y mantenimiento: <b>2961, 2981, 3551, 3571 y 2614</b>.</span>
   </div>
 }
 
