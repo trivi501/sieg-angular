@@ -12,7 +12,7 @@ class OrdenCompra extends Model
     protected $table = 'ordenes_compra';
 
     protected $fillable = [
-        'id_tb_egreso_requisicion', 'proveedor_id', 'folio', 'año', 'folio_completo', 'fecha', 'importe', 'xml_uuid_cancelado',
+        'id_tb_egreso_requisicion', 'proveedor_id', 'sin_factura', 'folio', 'año', 'folio_completo', 'fecha', 'importe', 'xml_uuid_cancelado',
         'observaciones', 'user_id', 'xml_path', 'xml_uuid', 'xml_rfc_emisor', 'xml_nombre_emisor',
         'xml_serie', 'xml_folio', 'xml_fecha', 'xml_subtotal', 'xml_total', 'xml_isr', 'xml_cargado_at', 'xml_user_id',
         'sat_estado', 'sat_estatus_cancelacion', 'sat_efos', 'sat_verificado_at',
@@ -37,6 +37,7 @@ class OrdenCompra extends Model
             'xml_isr' => 'float',
             'xml_cargado_at' => 'datetime',
             'sat_efos' => 'boolean',
+            'sin_factura' => 'boolean',
             'sat_verificado_at' => 'datetime',
             'pago_fecha' => 'date:Y-m-d',
             'pago_registrado_at' => 'datetime',
@@ -51,6 +52,15 @@ class OrdenCompra extends Model
     public function requisicion()
     {
         return $this->belongsTo(EgresoRequisicion::class, 'id_tb_egreso_requisicion', 'id_tb_egreso_requisicion');
+    }
+
+    /**
+     * A quién se le paga: el proveedor o, en un apoyo sin factura (sin_factura, folio AP-…), el
+     * beneficiario capturado en la requisición.
+     */
+    public function aFavorDe(): ?string
+    {
+        return $this->sin_factura ? $this->requisicion?->beneficiario : $this->proveedor?->nombre;
     }
 
     public function proveedor()

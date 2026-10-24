@@ -63,6 +63,8 @@ export interface FilaCaptura {
   descripcion: string;
   precio_unitario?: number | null;
   lleva_iva?: boolean;
+  /** Sin factura (apoyo): monto del renglón, que se guarda como su precio. */
+  monto?: number | null;
 }
 
 export interface Edicion {
@@ -76,6 +78,11 @@ export interface Edicion {
     concepto: string;
     fecha_tramite: string;
     filas: FilaCaptura[];
+    sin_factura?: boolean;
+    beneficiario?: string | null;
+    beneficiario_referencia?: string | null;
+    beneficiario_fecha?: string | null;
+    incluye_iva?: boolean;
   };
 }
 
@@ -111,6 +118,11 @@ export interface DetalleRequisicion {
     total: number;
     suficiencia: boolean | null;
     suficiencia_fecha: string | null;
+    /** Sin factura: apoyo a un beneficiario, con su documento de referencia. */
+    sin_factura: boolean;
+    beneficiario: string | null;
+    beneficiario_referencia: string | null;
+    beneficiario_fecha: string | null;
     extemporanea: boolean;
     extemporanea_pendiente: boolean;
     extemporanea_autorizada_at: string | null;
@@ -142,9 +154,11 @@ export interface DetalleRequisicion {
     fecha: string | null;
     importe: number;
     observaciones: string | null;
-    proveedor_id: number;
+    proveedor_id: number | null;
     proveedor: string | null;
     rfc: string | null;
+    /** Registro de la CLC de un apoyo sin factura (folio AP-…), no una compra. */
+    sin_factura: boolean;
     factura: string | null;
     xml: {
       uuid: string;
@@ -209,7 +223,8 @@ export interface DetalleRequisicion {
     | 'imprimirClc'
     | 'cancelarClc'
     | 'asignarAlmacen'
-    | 'verAlmacen',
+    | 'verAlmacen'
+    | 'generarClcSinFactura',
     boolean
   >;
 }

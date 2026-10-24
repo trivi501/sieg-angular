@@ -23,6 +23,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
@@ -173,6 +174,9 @@ class RequisicionController extends Controller
         // Mantenimiento vehicular: el taller hace los pasos de Recursos Materiales (VehiculoMantenimiento::delTaller).
         $taller = $m !== null && $user->can('vehiculos-mantenimiento');
         $sinSuficiencia = $requisicion->suficiencia !== true;
+        // Sin factura: el registro de la orden solo lleva la CLC del apoyo (folio AP-…); no es una compra.
+        $sf = (bool) $requisicion->sin_factura;
+        $compra = $sf ? null : $requisicion->ordenCompra;
 
         return response()->json([
             'requisicion' => [
@@ -192,6 +196,11 @@ class RequisicionController extends Controller
                 'total' => (float) $requisicion->total,
                 'suficiencia' => $requisicion->suficiencia,
                 'suficiencia_fecha' => $requisicion->suficiencia_fecha?->toIso8601String(),
+                // Sin factura (apoyo a un beneficiario).
+                'sin_factura' => (bool) $requisicion->sin_factura,
+                'beneficiario' => $requisicion->beneficiario,
+                'beneficiario_referencia' => $requisicion->beneficiario_referencia,
+                'beneficiario_fecha' => $requisicion->beneficiario_fecha?->format('Y-m-d'),
                 'extemporanea' => (bool) $requisicion->extemporanea,
                 'extemporanea_pendiente' => $requisicion->extemporaneaPendiente(),
                 'extemporanea_autorizada_at' => $requisicion->extemporanea_autorizada_at?->toIso8601String(),
@@ -229,8 +238,9 @@ class RequisicionController extends Controller
                 'importe' => (float) $oc->importe,
                 'observaciones' => $oc->observaciones,
                 'proveedor_id' => $oc->proveedor_id,
-                'proveedor' => $oc->proveedor?->nombre,
+                'proveedor' => $oc->aFavorDe(),
                 'rfc' => $oc->proveedor?->rfc,
+                'sin_factura' => (bool) $oc->sin_factura,
                 'factura' => $oc->xml_uuid ? (trim(($oc->xml_serie ?? '').' '.($oc->xml_folio ?? '')) ?: $oc->xml_uuid) : null,
                 'xml' => $oc->xml_uuid ? [
                     'uuid' => $oc->xml_uuid,
@@ -287,33 +297,36 @@ class RequisicionController extends Controller
                 'enviar' => in_array($estado, [1, 4], true) && $editable && $user->can('requisiciones-create'),
                 'validar' => $estado === 2 && $user->hasRole(['Super Admin', 'Admin']) && $user->can('requisiciones-edit'),
                 'imprimir' => $estado === 3 || ($estado >= 5 && $estado !== EgresoRequisicion::CANCELADA),
-                'enviarRecursos' => $estado === 3 && ($user->can('requisiciones-edit') || $taller),
+                // Sin factura (apoyo): no va a Recursos Materiales; de aprobada pasa a la suficiencia.
+                'enviarRecursos' => $estado === 3 && ! $sf && ($user->can('requisiciones-edit') || $taller),
                 'recibir' => $estado === 5 && ($user->can('requisiciones-cotizar') || $taller),
                 'devolver' => in_array($estado, [5, 6], true) && $sinSuficiencia && $user->can('requisiciones-devolver'),
                 'cotizar' => $estado === 6 && $editable && ($user->can('requisiciones-cotizar') || $taller),
-                'suficiencia' => $estado === 6 && $sinSuficiencia && $user->can('requisiciones-suficiencia'),
+                'suficiencia' => ($estado === 6 || ($sf && $estado === 3)) && $sinSuficiencia && $user->can('requisiciones-suficiencia'),
                 'extemporanea' => $requisicion->extemporaneaPendiente() && $user->can('requisiciones-extemporaneas'),
                 'cambiarFecha' => $this->puedeCambiarFecha($requisicion),
                 'cancelar' => $this->puedeCancelar($requisicion),
                 'eliminar' => $user->can('requisiciones-delete') && in_array($estado, [1, 4], true),
                 'modificacion' => $requisicion->suficiencia === false && $user->can('modificaciones-create'),
                 // Orden de compra (SIEG: Show.tsx y OrdenCompraController).
-                'generarOrden' => $estado === EgresoRequisicion::COMPROMETIDA && ! $oc && ($user->can('ordenes-compra-create') || $taller),
-                'imprimirOrden' => $oc && ! $oc->cancelada_at,
-                'cambiarProveedor' => $oc && ! $oc->cancelada_at && ! $oc->xml_uuid && ($user->can('ordenes-compra-create') || $taller),
-                'cambiarFechaOrden' => $oc && ! $oc->cancelada_at && $user->can('ordenes-compra-fecha'),
-                'cargarXml' => $oc && ! $oc->cancelada_at && ! $oc->xml_uuid && ($user->can('ordenes-compra-create') || $taller),
+                'generarOrden' => ! $sf && $estado === EgresoRequisicion::COMPROMETIDA && ! $oc && ($user->can('ordenes-compra-create') || $taller),
+                'imprimirOrden' => $compra && ! $compra->cancelada_at,
+                'cambiarProveedor' => $compra && ! $compra->cancelada_at && ! $compra->xml_uuid && ($user->can('ordenes-compra-create') || $taller),
+                'cambiarFechaOrden' => $compra && ! $compra->cancelada_at && $user->can('ordenes-compra-fecha'),
+                'cargarXml' => $compra && ! $compra->cancelada_at && ! $compra->xml_uuid && ($user->can('ordenes-compra-create') || $taller),
                 'descargarXml' => $oc && $oc->xml_path !== null,
                 'verificarSat' => $oc && $oc->xml_uuid && $user->can('ordenes-compra-verificar-sat'),
                 'refacturar' => $oc && $oc->xml_uuid && ! $oc->cancelada_at && ! ($oc->pago_fecha && ! $oc->clc_cancelada_at) && $user->can('ordenes-compra-refacturar'),
-                'cancelarOrden' => $oc && ! $oc->cancelada_at && ! $oc->clcActiva() && $user->can('ordenes-compra-cancelar'),
-                'altaProveedor' => $user->can('proveedores-create'),
+                'cancelarOrden' => $compra && ! $compra->cancelada_at && ! $compra->clcActiva() && $user->can('ordenes-compra-cancelar'),
+                'altaProveedor' => ! $sf && $user->can('proveedores-create'),
+                // Apoyo sin factura: la CLC se genera desde la requisición comprometida (sin orden ni factura).
+                'generarClcSinFactura' => $sf && $estado === EgresoRequisicion::COMPROMETIDA && ! $oc && $user->can('requisiciones-clc'),
                 // CLC de la orden.
                 'generarClc' => $oc && $oc->xml_uuid && ! $oc->clc_folio_completo && ! $oc->cancelada_at && $user->can('requisiciones-clc'),
                 'imprimirClc' => $oc && $oc->clc_folio_completo && ! $oc->clc_cancelada_at,
                 'cancelarClc' => $oc && TramiteClc::impedimentoParaCancelar($oc, $user) === null,
                 // Almacén: Recursos Materiales asigna la orden para que el almacén reciba los bienes.
-                'asignarAlmacen' => $oc && ! $oc->cancelada_at && ! $oc->almacen_asignada_at && $user->can('ordenes-compra-almacen'),
+                'asignarAlmacen' => $compra && ! $compra->cancelada_at && ! $oc->almacen_asignada_at && $user->can('ordenes-compra-almacen'),
                 'verAlmacen' => $oc && $oc->almacen_asignada_at && $user->can('almacen-index'),
             ],
             // Si la CLC está vigente pero ya no le toca cancelarla, por qué (se muestra junto al botón).
@@ -425,6 +438,11 @@ class RequisicionController extends Controller
                     'precio_unitario' => $d->precio_unitario !== null ? (float) $d->precio_unitario : null,
                     'lleva_iva' => (float) $d->iva_factor > 0,
                 ]),
+                'sin_factura' => (bool) $requisicion->sin_factura,
+                'beneficiario' => $requisicion->beneficiario,
+                'beneficiario_referencia' => $requisicion->beneficiario_referencia,
+                'beneficiario_fecha' => $requisicion->beneficiario_fecha?->format('Y-m-d'),
+                'incluye_iva' => (float) $requisicion->iva > 0,
             ],
         ]);
     }
@@ -495,14 +513,26 @@ class RequisicionController extends Controller
                 'filas.*.partida' => 'nullable|string|max:200',
                 'filas.*.cantidad' => 'nullable|numeric',
                 'filas.*.descripcion' => 'required|string|max:3000',
+                // Sin factura (apoyo): beneficiario, documento de referencia y el monto de cada renglón.
+                'sin_factura' => 'boolean',
+                'beneficiario' => [Rule::requiredIf(fn () => request()->boolean('sin_factura')), 'nullable', 'string', 'max:1500'],
+                'beneficiario_referencia' => [Rule::requiredIf(fn () => request()->boolean('sin_factura')), 'nullable', 'string', 'max:100'],
+                'beneficiario_fecha' => [Rule::requiredIf(fn () => request()->boolean('sin_factura')), 'nullable', 'date'],
+                'filas.*.monto' => [Rule::requiredIf(fn () => request()->boolean('sin_factura')), 'nullable', 'numeric', 'min:0.01'],
             ],
             [
                 'concepto.required' => 'Captura el concepto de la requisición.',
                 'filas.required' => 'Agrega al menos un renglón.',
                 'filas.min' => 'Agrega al menos un renglón.',
                 'filas.*.descripcion.required' => 'Describe el artículo, material o servicio del renglón.',
+                'beneficiario.required' => 'Captura el beneficiario del apoyo.',
+                'beneficiario_referencia.required' => 'Captura el folio del documento de referencia.',
+                'beneficiario_fecha.required' => 'Captura la fecha del documento de referencia.',
+                'filas.*.monto.required' => 'Captura el monto del apoyo.',
+                'filas.*.monto.min' => 'El monto del apoyo debe ser mayor a cero.',
             ],
-            ['id_cat_egreso_unidad_administrativa' => 'unidad administrativa', 'fecha_tramite' => 'fecha de trámite'],
+            ['id_cat_egreso_unidad_administrativa' => 'unidad administrativa', 'fecha_tramite' => 'fecha de trámite',
+                'beneficiario_referencia' => 'folio de referencia', 'beneficiario_fecha' => 'fecha de referencia'],
         ];
     }
 
@@ -510,6 +540,33 @@ class RequisicionController extends Controller
      * Calcula cantidad/precio/iva/subtotal/total de cada fila; el total de la requisición
      * se deriva siempre de esta suma, nunca se captura a mano, para que nunca puedan quedar distintos.
      */
+    /**
+     * Sin factura (apoyo): no pasa por cotización, así que el monto de cada renglón se captura desde el
+     * alta como su precio (cantidad 1). Con factura, las filas quedan como vienen (el precio lo pone la cotización).
+     */
+    private function filasDeCaptura(array $validated): array
+    {
+        $filas = $validated['filas'] ?? [];
+        if (empty($validated['sin_factura'])) {
+            return array_map(fn ($f) => array_diff_key($f, ['monto' => true]), $filas);
+        }
+
+        return array_map(fn ($f) => ['cantidad' => 1, 'precio_unitario' => (float) $f['monto']] + array_diff_key($f, ['monto' => true, 'cantidad' => true]), $filas);
+    }
+
+    /** Datos del apoyo que se guardan en la requisición (vacíos si es con factura). */
+    private function datosSinFactura(array $validated): array
+    {
+        $sinFactura = (bool) ($validated['sin_factura'] ?? false);
+
+        return [
+            'sin_factura' => $sinFactura,
+            'beneficiario' => $sinFactura ? mb_strtoupper(trim($validated['beneficiario'])) : null,
+            'beneficiario_referencia' => $sinFactura ? mb_strtoupper(trim($validated['beneficiario_referencia'])) : null,
+            'beneficiario_fecha' => $sinFactura ? $validated['beneficiario_fecha'] : null,
+        ];
+    }
+
     private function calcularFilas(array $filas, bool $incluyeIva): array
     {
         $ivaFactor = $incluyeIva ? self::IVA_FACTOR : 0;
@@ -653,10 +710,13 @@ class RequisicionController extends Controller
         $this->validarLineasPresupuesto($validated['filas'] ?? [], $unidad);
         if ($mantenimiento) {
             $this->validarPartidasMantenimiento($validated['filas'] ?? []);
+            if (! empty($validated['sin_factura'])) {
+                throw ValidationException::withMessages(['sin_factura' => 'Un mantenimiento vehicular lleva orden de compra y factura: no puede ser sin factura.']);
+            }
         }
         $prefijo = $unidad?->prefijo ?: 'REQ';
 
-        [$filasCalculadas, $totales] = $this->calcularFilas($validated['filas'] ?? [], (bool) ($validated['incluye_iva'] ?? false));
+        [$filasCalculadas, $totales] = $this->calcularFilas($this->filasDeCaptura($validated), (bool) ($validated['incluye_iva'] ?? false));
 
         // Fuera del periodo ordinario de captura queda extemporánea (no avanza sin autorización).
         $extemporanea = ! EjercicioFiscal::enPeriodoDeCaptura(now('America/Mexico_City'));
@@ -691,8 +751,7 @@ class RequisicionController extends Controller
                 'monto_requisicion' => $totales['total'],
                 'sub_direccion' => null,
                 'departamento' => $mantenimiento?->departamento?->nombre,
-                'beneficiario' => null,
-                'beneficiario_referencia' => null,
+                ...$this->datosSinFactura($validated),
                 'extemporanea' => $extemporanea,
             ]);
 
@@ -789,7 +848,7 @@ class RequisicionController extends Controller
             $this->validarPartidasMantenimiento($validated['filas'] ?? []);
         }
 
-        [$filasCalculadas, $totales] = $this->calcularFilas($validated['filas'] ?? [], (bool) ($validated['incluye_iva'] ?? false));
+        [$filasCalculadas, $totales] = $this->calcularFilas($this->filasDeCaptura($validated), (bool) ($validated['incluye_iva'] ?? false));
 
         DB::transaction(function () use ($requisicion, $validated, $filasCalculadas, $totales) {
             $requisicion->update([
@@ -800,6 +859,7 @@ class RequisicionController extends Controller
                 'iva' => $totales['iva'],
                 'total' => $totales['total'],
                 'monto_requisicion' => $totales['total'],
+                ...$this->datosSinFactura($validated),
             ]);
 
             EgresoRequisicionDetalle::where('id_tb_egreso_requisicion', $requisicion->id_tb_egreso_requisicion)
@@ -884,7 +944,10 @@ class RequisicionController extends Controller
         // Con orden de compra se cancela de lo último a lo primero: CLC, orden de compra y al final la requisición.
         $orden = $requisicion->ordenCompra;
         if ($orden) {
-            return $orden->cancelada_at !== null && auth()->user()->can('requisiciones-cancelar');
+            // Apoyo sin factura: no hay orden que cancelar aparte; basta con que su CLC no esté vigente.
+            $libre = $orden->sin_factura ? ! $orden->clcActiva() : $orden->cancelada_at !== null;
+
+            return $libre && auth()->user()->can('requisiciones-cancelar');
         }
         if (! in_array($estado, EgresoRequisicion::CANCELABLES, true)) {
             return false;
@@ -915,6 +978,11 @@ class RequisicionController extends Controller
         $anterior = (int) $requisicion->id_cat_egreso_requisicion_estado;
 
         DB::transaction(function () use ($requisicion, $validated, $user, $anterior) {
+            // Apoyo sin factura: su registro de CLC (AP-…) se cancela junto con la requisición.
+            $apoyo = $requisicion->ordenCompra;
+            if ($apoyo?->sin_factura && ! $apoyo->cancelada_at) {
+                $apoyo->update(['cancelada_at' => now(), 'cancelada_user_id' => $user->id, 'motivo_cancelacion' => $validated['motivo']]);
+            }
             $requisicion->update([
                 'id_cat_egreso_requisicion_estado' => EgresoRequisicion::CANCELADA,
                 'cancelada_at' => now(),
@@ -1057,6 +1125,9 @@ class RequisicionController extends Controller
     public function enviarRecursosMateriales(EgresoRequisicion $requisicion): JsonResponse
     {
         $this->autorizarUnidad($requisicion);
+        if ($requisicion->sin_factura) {
+            return $this->error('Un apoyo sin factura no va a Recursos Materiales: de aprobada pasa a validar la suficiencia.');
+        }
         $deTaller = VehiculoMantenimiento::where('id_tb_egreso_requisicion', $requisicion->id_tb_egreso_requisicion)->exists();
         abort_unless(auth()->user()->can('requisiciones-edit') || ($deTaller && auth()->user()->can('vehiculos-mantenimiento')), 403);
 
@@ -1088,8 +1159,12 @@ class RequisicionController extends Controller
      */
     public function validarSuficiencia(Request $request, EgresoRequisicion $requisicion): JsonResponse
     {
-        if ((int) $requisicion->id_cat_egreso_requisicion_estado !== 6 || $requisicion->suficiencia === true) {
-            return $this->error('Solo se valida la suficiencia de una requisición en cotización que aún no la tiene.');
+        // Sin factura (apoyo) no pasa por cotización: se valida en cuanto está aprobada (3).
+        $estadoValido = $requisicion->sin_factura ? 3 : 6;
+        if ((int) $requisicion->id_cat_egreso_requisicion_estado !== $estadoValido || $requisicion->suficiencia === true) {
+            return $this->error($requisicion->sin_factura
+                ? 'La suficiencia de un apoyo sin factura se valida cuando la requisición está aprobada y aún no la tiene.'
+                : 'Solo se valida la suficiencia de una requisición en cotización que aún no la tiene.');
         }
 
         $requisicion->load('tbEgresoRequisicionDetalles');
@@ -1246,7 +1321,7 @@ class RequisicionController extends Controller
                     'cancelada_at' => $r->cancelada_at?->toIso8601String(),
                     'orden' => $oc ? [
                         'folio' => $oc->folio_completo,
-                        'proveedor' => $oc->proveedor?->nombre,
+                        'proveedor' => $oc->aFavorDe(),
                         'factura' => $oc->xml_uuid ? (trim(($oc->xml_serie ?? '').' '.($oc->xml_folio ?? '')) ?: $oc->xml_uuid) : null,
                         'clc' => $oc->clc_folio_completo,
                         'clc_estado' => $oc->clc_folio_completo ? TramiteClc::descripcion($oc->clc_estado) : null,

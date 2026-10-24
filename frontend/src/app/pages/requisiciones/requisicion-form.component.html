@@ -41,6 +41,49 @@
 @if (cargado()) {
   <form class="card" (ngSubmit)="guardar()">
     <div class="card-body">
+      <!-- Con o sin factura: sin factura es un apoyo a un beneficiario (no pasa por Recursos Materiales). -->
+      @if (!cotizacion() && !mantenimiento()) {
+        <div class="d-flex flex-wrap align-items-center gap-3 mb-3 p-2 rounded border" [class.border-primary]="sinFactura()" [class.bg-light-primary]="sinFactura()">
+          <div class="form-check form-switch mb-0">
+            <input class="form-check-input" type="checkbox" role="switch" id="sinFactura" name="sinFactura" [ngModel]="sinFactura()" (ngModelChange)="sinFactura.set($event)" />
+            <label class="form-check-label fw-semibold" for="sinFactura">Sin factura (apoyo a un beneficiario)</label>
+          </div>
+          <small class="text-muted">
+            {{
+              sinFactura()
+                ? 'Se captura el beneficiario y el monto del apoyo. Tras aprobarla y validar la suficiencia, el área genera la CLC directamente (sin orden de compra ni factura).'
+                : 'Con factura: pasa por Recursos Materiales, cotización, orden de compra y factura.'
+            }}
+          </small>
+        </div>
+
+        @if (sinFactura()) {
+          <div class="row g-3 mb-3">
+            <div class="col-md-6">
+              <label class="form-label" for="beneficiario">Beneficiario</label>
+              <input id="beneficiario" name="beneficiario" class="form-control" maxlength="1500" placeholder="Nombre de la persona o institución" [ngModel]="beneficiario()" (ngModelChange)="beneficiario.set($event)" [class.is-invalid]="error_('beneficiario')" />
+              <div class="invalid-feedback">{{ error_('beneficiario') }}</div>
+            </div>
+            <div class="col-6 col-md-3">
+              <label class="form-label" for="referencia">Folio de referencia</label>
+              <input id="referencia" name="referencia" class="form-control" maxlength="100" placeholder="Oficio, solicitud…" [ngModel]="referencia()" (ngModelChange)="referencia.set($event)" [class.is-invalid]="error_('beneficiario_referencia')" />
+              <div class="invalid-feedback">{{ error_('beneficiario_referencia') }}</div>
+            </div>
+            <div class="col-6 col-md-3">
+              <label class="form-label" for="fechaReferencia">Fecha de referencia</label>
+              <input id="fechaReferencia" name="fechaReferencia" type="date" class="form-control" [ngModel]="fechaReferencia()" (ngModelChange)="fechaReferencia.set($event)" [class.is-invalid]="error_('beneficiario_fecha')" />
+              <div class="invalid-feedback">{{ error_('beneficiario_fecha') }}</div>
+            </div>
+            <div class="col-12">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="conIva" name="conIva" [ngModel]="conIva()" (ngModelChange)="conIva.set($event)" />
+                <label class="form-check-label" for="conIva">Con IVA (se suma 16 % al monto del apoyo)</label>
+              </div>
+            </div>
+          </div>
+        }
+      }
+
       <div class="row g-3 mb-3">
         <div class="col-md-6">
           <label class="form-label" for="unidad">Secretaría o dirección</label>
@@ -100,7 +143,11 @@
                 <th style="min-width: 190px">Partida</th>
                 <th style="min-width: 170px">Proyecto</th>
                 <th style="min-width: 150px">Fuente</th>
-                <th style="width: 90px">Cantidad</th>
+                @if (sinFactura()) {
+                  <th style="width: 150px">Monto del apoyo</th>
+                } @else {
+                  <th style="width: 90px">Cantidad</th>
+                }
                 <th style="min-width: 240px">Descripción</th>
                 <th></th>
               </tr>
@@ -168,7 +215,22 @@
                     </select>
                   </td>
                   <td>
-                    <input type="number" min="0" step="any" class="form-control form-control-sm" [name]="'cantidad' + i" [ngModel]="f.cantidad" (ngModelChange)="cambiar(i, 'cantidad', $event)" />
+                    @if (sinFactura()) {
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        class="form-control form-control-sm"
+                        placeholder="$0.00"
+                        [name]="'monto' + i"
+                        [ngModel]="f.monto"
+                        (ngModelChange)="cambiar(i, 'monto', $event)"
+                        [class.is-invalid]="error_('filas.' + i + '.monto')"
+                      />
+                      <div class="invalid-feedback">{{ error_('filas.' + i + '.monto') }}</div>
+                    } @else {
+                      <input type="number" min="0" step="any" class="form-control form-control-sm" [name]="'cantidad' + i" [ngModel]="f.cantidad" (ngModelChange)="cambiar(i, 'cantidad', $event)" />
+                    }
                   </td>
                   <td>
                     <textarea
@@ -210,6 +272,13 @@
       </div>
       @if (error_('filas')) {
         <div class="text-danger small">{{ error_('filas') }}</div>
+      }
+      @if (sinFactura() && !cotizacion()) {
+        <div class="d-flex justify-content-end gap-4 small mb-2">
+          <span>Subtotal <b class="font-monospace">{{ money(totales().subTotal) }}</b></span>
+          <span>IVA <b class="font-monospace">{{ money(totales().iva) }}</b></span>
+          <span>Total del apoyo <b class="font-monospace">{{ money(totales().total) }}</b></span>
+        </div>
       }
       @if (!cotizacion()) {
         <button type="button" class="btn btn-sm btn-outline-primary" (click)="agregar()" appAccion="Agregar concepto" icono="plus"></button>

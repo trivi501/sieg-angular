@@ -110,6 +110,9 @@
             Validar suficiencia presupuestal
           </button>
         }
+        @if (d.puede.generarClcSinFactura) {
+          <button type="button" class="btn btn-primary" (click)="abrir('clcApoyo')" appAccion="Generar CLC del apoyo" icono="file-done"></button>
+        }
         @if (d.puede.modificacion) {
           <a routerLink="/modificaciones/nueva" [queryParams]="{ requisicion: id }" class="btn btn-outline-primary" appAccion="Solicitar modificación presupuestal" icono="swap"></a>
         }
@@ -139,6 +142,18 @@
             <div class="col-sm-4"><span class="text-muted d-block">Capturada</span>{{ r.registro | date: 'dd/MM/yyyy HH:mm' }}</div>
             <div class="col-sm-4"><span class="text-muted d-block">Ejercicio</span>{{ r['año'] }}</div>
             <div class="col-12"><span class="text-muted d-block">Concepto</span>{{ r.concepto }}</div>
+            @if (r.sin_factura) {
+              <div class="col-12">
+                <div class="border border-primary rounded p-2 bg-light-primary">
+                  <span class="badge bg-primary mb-1">Sin factura · apoyo</span>
+                  <div class="row g-2">
+                    <div class="col-sm-6"><span class="text-muted d-block">Beneficiario</span><b>{{ r.beneficiario }}</b></div>
+                    <div class="col-sm-3"><span class="text-muted d-block">Folio de referencia</span>{{ r.beneficiario_referencia }}</div>
+                    <div class="col-sm-3"><span class="text-muted d-block">Fecha de referencia</span>{{ r.beneficiario_fecha | date: 'dd/MM/yyyy' }}</div>
+                  </div>
+                </div>
+              </div>
+            }
           </div>
 
           <div class="table-responsive">

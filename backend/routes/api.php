@@ -89,6 +89,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // Órdenes de compra (SIEG: routes/web.php), con los mismos permisos. La CLC y el pago van con su trámite.
     Route::get('ordenes-compra', [OrdenCompraController::class, 'index'])->middleware('permission:recursos-materiales-index|ordenes-compra-create|ordenes-compra-cancelar|ordenes-compra-pagar|ordenes-compra-verificar-sat');
     Route::get('ordenes-compra/proveedores', [OrdenCompraController::class, 'proveedores'])->middleware('permission:ordenes-compra-create|vehiculos-mantenimiento');
+    // Apoyo sin factura: la CLC sale directo de la requisición comprometida (folio AP-AÑO-0001).
+    Route::post('requisiciones/{requisicion}/clc', [OrdenCompraController::class, 'generarClcSinFactura'])->whereNumber('requisicion')->middleware('permission:requisiciones-clc');
     Route::post('requisiciones/{requisicion}/orden-compra', [OrdenCompraController::class, 'store'])->whereNumber('requisicion')->middleware('permission:ordenes-compra-create|vehiculos-mantenimiento');
     Route::whereNumber('ordenCompra')->group(function () {
         Route::get('ordenes-compra/{ordenCompra}/pdf', [OrdenCompraController::class, 'pdf'])->middleware('permission:requisiciones-index');

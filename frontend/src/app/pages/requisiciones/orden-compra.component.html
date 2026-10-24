@@ -2,7 +2,7 @@
   <div class="card">
     <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
       <h5 class="mb-0">
-        Orden de compra {{ o.folio }}
+        {{ o.sin_factura ? 'Apoyo sin factura' : 'Orden de compra' }} {{ o.folio }}
         @if (o.cancelada) {
           <span class="badge bg-light-dark text-dark">Cancelada</span>
         }
@@ -44,7 +44,7 @@
       }
 
       <div class="row small g-2 mb-3">
-        <div class="col-sm-6"><span class="text-muted d-block">Proveedor</span>{{ o.proveedor }} {{ o.rfc ? '(' + o.rfc + ')' : '' }}</div>
+        <div class="col-sm-6"><span class="text-muted d-block">{{ o.sin_factura ? 'Beneficiario' : 'Proveedor' }}</span>{{ o.proveedor }} {{ o.rfc ? '(' + o.rfc + ')' : '' }}</div>
         <div class="col-sm-3"><span class="text-muted d-block">Fecha</span>{{ o.fecha | date: 'dd/MM/yyyy' }}</div>
         <div class="col-sm-3"><span class="text-muted d-block">Importe</span>{{ money(o.importe) }}</div>
         @if (o.observaciones) {
@@ -52,6 +52,9 @@
         }
       </div>
 
+      @if (o.sin_factura) {
+        <p class="small text-muted mb-0">Apoyo sin factura: el soporte es el documento de referencia de la requisición.</p>
+      } @else {
       <h6 class="mb-2">Factura</h6>
       @if (o.xml; as x) {
         <div class="row small g-2">
@@ -105,6 +108,7 @@
         }
       } @else {
         <p class="small text-muted mb-0">Sin factura.</p>
+      }
       }
 
       <!-- CLC (cuenta por liquidar certificada) -->

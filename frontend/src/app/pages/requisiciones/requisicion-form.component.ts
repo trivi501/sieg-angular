@@ -46,6 +46,13 @@ export class RequisicionFormComponent {
   concepto = signal('');
   filas = signal<FilaCaptura[]>([this.filaVacia()]);
 
+  // Sin factura (apoyo a un beneficiario): no pasa por Recursos Materiales; se captura el monto desde aquí.
+  sinFactura = signal(false);
+  beneficiario = signal('');
+  referencia = signal('');
+  fechaReferencia = signal('');
+  conIva = signal(false);
+
   errores = signal<Record<string, string>>({});
   error = signal('');
   guardando = signal(false);
@@ -59,6 +66,11 @@ export class RequisicionFormComponent {
   totales = computed(() => {
     let subTotal = 0;
     let iva = 0;
+    if (this.sinFactura() && !this.cotizacion()) {
+      subTotal = this.filas().reduce((s, f) => s + (Number(f.monto) || 0), 0);
+      iva = this.conIva() ? subTotal * IVA : 0;
+      return { subTotal, iva, total: subTotal + iva };
+    }
     for (const f of this.filas()) {
       const st = (Number(f.precio_unitario) || 0) * (Number(f.cantidad) || 0);
       subTotal += st;
@@ -78,7 +90,13 @@ export class RequisicionFormComponent {
           this.unidad.set(e.requisicion.id_cat_egreso_unidad_administrativa);
           this.fecha.set(e.requisicion.fecha_tramite);
           this.concepto.set(e.requisicion.concepto ?? '');
-          this.filas.set(e.requisicion.filas.map((f) => ({ ...f })));
+          this.sinFactura.set(!!e.requisicion.sin_factura);
+          this.beneficiario.set(e.requisicion.beneficiario ?? '');
+          this.referencia.set(e.requisicion.beneficiario_referencia ?? '');
+          this.fechaReferencia.set(e.requisicion.beneficiario_fecha ?? '');
+          this.conIva.set(!!e.requisicion.incluye_iva);
+          // En un apoyo el monto de cada renglón es su precio.
+          this.filas.set(e.requisicion.filas.map((f) => ({ ...f, monto: e.requisicion.sin_factura ? (f.precio_unitario ?? null) : null })));
           this.cargado.set(true);
         },
         error: (e: HttpErrorResponse) => {
@@ -208,12 +226,22 @@ export class RequisicionFormComponent {
           fecha_tramite: this.fecha(),
           concepto: this.concepto(),
           mantenimiento_id: this.mantenimiento()?.id ?? null,
+          sin_factura: this.sinFactura(),
+          ...(this.sinFactura()
+            ? {
+                beneficiario: this.beneficiario(),
+                beneficiario_referencia: this.referencia(),
+                beneficiario_fecha: this.fechaReferencia() || null,
+                incluye_iva: this.conIva()
+              }
+            : {}),
           filas: this.filas().map((f) => ({
             partida: f.partida,
             proyecto: f.proyecto,
             fuente: f.fuente,
-            cantidad: f.cantidad,
-            descripcion: f.descripcion
+            cantidad: this.sinFactura() ? 1 : f.cantidad,
+            descripcion: f.descripcion,
+            ...(this.sinFactura() ? { monto: f.monto ?? null } : {})
           }))
         };
 

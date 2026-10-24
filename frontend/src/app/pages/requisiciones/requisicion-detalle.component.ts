@@ -150,7 +150,14 @@ export class RequisicionDetalleComponent {
       clase: 'btn-danger',
       conMotivo: true
     },
-    fecha: { ruta: 'fecha', titulo: 'Cambiar fecha de trámite', texto: 'Es la fecha que imprime el formato. Queda en la bitácora.', boton: 'Guardar fecha', clase: 'btn-primary', fecha: true }
+    fecha: { ruta: 'fecha', titulo: 'Cambiar fecha de trámite', texto: 'Es la fecha que imprime el formato. Queda en la bitácora.', boton: 'Guardar fecha', clase: 'btn-primary', fecha: true },
+    clcApoyo: {
+      ruta: 'clc',
+      titulo: 'Generar CLC del apoyo',
+      texto: 'Apoyo sin factura: se genera la CLC a favor del beneficiario (sin orden de compra ni factura). Después se envía en el Trámite de CLC.',
+      boton: 'Generar CLC',
+      clase: 'btn-primary'
+    }
   };
 
   abrir(clave: string): void {

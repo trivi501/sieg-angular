@@ -158,6 +158,7 @@ export class MenuRequisicionComponent {
     agregar(p.cambiarProveedor, 'Cambiar proveedor', 'user-switch', 'orden', () => ir('oc:proveedor'));
     agregar(p.cargarXml, 'Subir factura (XML)', 'upload', 'orden', () => ir('oc:xml'));
     agregar(p.generarClc, 'Generar CLC', 'file-done', 'orden', () => ir('oc:generarClc'));
+    agregar(p.generarClcSinFactura, 'Generar CLC del apoyo', 'file-done', 'orden', () => ir('clcApoyo'));
     agregar(p.verAlmacen && oc, 'Ver en almacén', 'shop', 'orden', () => this.router.navigate(['/almacen', oc!.id]));
 
     agregar(p.cancelar, 'Cancelar requisición', 'stop', 'peligro', () => ir('cancelar'), true);

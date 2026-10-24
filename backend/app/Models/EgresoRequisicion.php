@@ -65,6 +65,8 @@ class EgresoRequisicion extends Model
         'monto_requisicion',
         'beneficiario',
         'beneficiario_referencia',
+        'beneficiario_fecha',
+        'sin_factura',
         'suficiencia',
         'suficiencia_fecha',
         'suficiencia_user_id',
@@ -80,6 +82,8 @@ class EgresoRequisicion extends Model
     {
         return [
             'suficiencia' => 'boolean',
+            'sin_factura' => 'boolean',
+            'beneficiario_fecha' => 'date:Y-m-d',
             'suficiencia_fecha' => 'datetime',
             'extemporanea' => 'boolean',
             'extemporanea_autorizada_at' => 'datetime',

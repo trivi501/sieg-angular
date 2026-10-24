@@ -80,7 +80,7 @@
                     <td>{{ $i + 1 }}</td>
                     <td>{{ $o->clc_folio_completo }}</td>
                     <td>{{ $u ? trim($u->clave.' '.$u->nombre) : '—' }}</td>
-                    <td>{{ $o->proveedor?->nombre }}</td>
+                    <td>{{ $o->aFavorDe() }}</td>
                     <td class="num">${{ number_format((float) $o->importe, 2) }}</td>
                     <td style="text-align: center;">
                         @if ($o->pivot->recibida_at)

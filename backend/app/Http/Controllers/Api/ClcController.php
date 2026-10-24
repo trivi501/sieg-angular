@@ -36,7 +36,7 @@ class ClcController extends Controller
             ->when(! $todas, fn ($q) => $q->where(fn ($w) => $w
                 ->whereIn('clc_estado', $estadosBandeja ?: ['__ninguno__'])
                 ->orWhereHas('requisicion', fn ($r) => $r->whereIn('id_cat_egreso_unidad_administrativa', $propias ?: [0]))))
-            ->with(['proveedor:id,nombre', 'requisicion:id_tb_egreso_requisicion,folio_completo,id_cat_egreso_unidad_administrativa,observaciones',
+            ->with(['proveedor:id,nombre', 'requisicion:id_tb_egreso_requisicion,folio_completo,id_cat_egreso_unidad_administrativa,observaciones,beneficiario',
                 'requisicion.catEgresoUnidadAdministrativa:id_cat_egreso_unidad_administrativa,clave,nombre', 'relacionClc:id,folio_completo,origen,destino',
                 'movimientosClc' => fn ($q) => $q->where('accion', 'devolver')->reorder()->latest('id')])
             ->orderByDesc('clc_generada_at')
@@ -52,7 +52,7 @@ class ClcController extends Controller
                 // ISR retenido en la factura: no cambia el importe; al proveedor se le paga importe − ISR.
                 'isr' => (float) ($o->xml_isr ?? 0),
                 'neto' => $o->netoAPagar(),
-                'proveedor' => $o->proveedor?->nombre,
+                'proveedor' => $o->aFavorDe(),
                 'requisicion_id' => $o->id_tb_egreso_requisicion,
                 'requisicion' => $o->requisicion?->folio_completo,
                 'concepto' => $o->requisicion?->observaciones,
@@ -132,7 +132,7 @@ class ClcController extends Controller
     {
         abort_unless(TramiteClc::veTodo($request->user()) || $request->user()->can('clc-sindicatura'), 403);
 
-        $relacion->load(['ordenes.proveedor:id,nombre', 'ordenes.requisicion:id_tb_egreso_requisicion,id_cat_egreso_unidad_administrativa',
+        $relacion->load(['ordenes.proveedor:id,nombre', 'ordenes.requisicion:id_tb_egreso_requisicion,id_cat_egreso_unidad_administrativa,beneficiario',
             'ordenes.requisicion.catEgresoUnidadAdministrativa:id_cat_egreso_unidad_administrativa,clave,nombre']);
 
         $pdf = Pdf::loadView('clc.relacion', ['relacion' => $relacion, 'areas' => TramiteClc::AREAS])->setPaper('letter');

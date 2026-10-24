@@ -46,6 +46,7 @@ class OrdenCompraController extends Controller
         $propias = \App\Models\EgresoUnidadAdministrativa::idsMismaClave($user->id_cat_egreso_unidad_administrativa);
 
         $query = OrdenCompra::query()
+            ->where('sin_factura', false) // los apoyos sin factura (AP-…) no son órdenes de compra
             ->when(! $todas, fn ($q) => $q->whereHas('requisicion', fn ($r) => $r->whereIn('id_cat_egreso_unidad_administrativa', $propias ?: [0])))
             ->when(filled($filtros['buscar'] ?? null), function ($q) use ($filtros) {
                 foreach (preg_split('/\s+/', trim($filtros['buscar'])) as $termino) {
@@ -134,7 +135,8 @@ class OrdenCompraController extends Controller
 
         $orden = DB::transaction(function () use ($requisicion, $validated, $proveedor) {
             $año = (int) date('Y', strtotime($validated['fecha']));
-            $folio = (OrdenCompra::where('año', $año)->lockForUpdate()->max('folio') ?? 0) + 1;
+            // Los apoyos sin factura (AP-…) llevan su propia numeración.
+            $folio = (OrdenCompra::where('sin_factura', false)->where('año', $año)->lockForUpdate()->max('folio') ?? 0) + 1;
 
             $orden = OrdenCompra::create([
                 'id_tb_egreso_requisicion' => $requisicion->id_tb_egreso_requisicion,
@@ -455,6 +457,50 @@ class OrdenCompraController extends Controller
         return response()->json(['message' => "CLC {$ordenCompra->clc_folio_completo} generada. Sigue enviarla a Recursos Materiales (Trámite de CLC)."]);
     }
 
+    /**
+     * CLC de un apoyo sin factura: la requisición comprometida no lleva orden de compra ni factura. Se crea
+     * el registro que guarda la CLC (folio AP-AÑO-0001, sin proveedor, a favor del beneficiario) y con él
+     * sigue el mismo trámite de CLC (relaciones, sindicatura, pago).
+     */
+    public function generarClcSinFactura(EgresoRequisicion $requisicion): JsonResponse
+    {
+        $this->autorizarArea($requisicion, soloArea: true);
+
+        if (! $requisicion->sin_factura) {
+            return $this->error('Esta requisición lleva factura: la CLC se genera desde su orden de compra.');
+        }
+        if ((int) $requisicion->id_cat_egreso_requisicion_estado !== EgresoRequisicion::COMPROMETIDA || $requisicion->suficiencia !== true) {
+            return $this->error('La CLC del apoyo se genera cuando la requisición está comprometida (con suficiencia presupuestal).');
+        }
+        if ($requisicion->ordenCompra()->exists()) {
+            return $this->error('Esta requisición ya tiene su CLC.');
+        }
+
+        $apoyo = DB::transaction(function () use ($requisicion) {
+            $año = (int) now('America/Mexico_City')->format('Y');
+            $folio = (OrdenCompra::where('sin_factura', true)->where('año', $año)->lockForUpdate()->max('folio') ?? 0) + 1;
+
+            $apoyo = OrdenCompra::create([
+                'id_tb_egreso_requisicion' => $requisicion->id_tb_egreso_requisicion,
+                'proveedor_id' => null,
+                'sin_factura' => true,
+                'folio' => $folio,
+                'año' => $año,
+                'folio_completo' => sprintf('AP-%d-%04d', $año, $folio),
+                'fecha' => now('America/Mexico_City')->toDateString(),
+                'importe' => round((float) $requisicion->total, 2),
+                'observaciones' => "Apoyo sin factura. Referencia {$requisicion->beneficiario_referencia}"
+                    .($requisicion->beneficiario_fecha ? ' del '.$requisicion->beneficiario_fecha->format('d/m/Y') : '').'.',
+                'user_id' => auth()->id(),
+            ]);
+            $this->crearClc($apoyo, ' (apoyo sin factura)');
+
+            return $apoyo;
+        });
+
+        return response()->json(['message' => "CLC {$apoyo->clc_folio_completo} generada para el apoyo a {$requisicion->beneficiario}. Sigue enviarla en el Trámite de CLC."]);
+    }
+
     public function clcPdf(OrdenCompra $ordenCompra)
     {
         abort_unless($ordenCompra->clc_folio_completo, 404);
@@ -490,13 +536,16 @@ class OrdenCompraController extends Controller
         DB::transaction(function () use ($ordenCompra, $tramite, $user, $motivo, $pagada) {
             $tramite->cancelar($ordenCompra, $user, $motivo);
 
-            $this->bitacora($ordenCompra->requisicion, EgresoRequisicion::CON_FACTURA,
+            // Apoyo sin factura: no hay orden ni factura; vuelve a comprometida y sigue cancelar la requisición.
+            $apoyo = (bool) $ordenCompra->sin_factura;
+            $this->bitacora($ordenCompra->requisicion, $apoyo ? EgresoRequisicion::COMPROMETIDA : EgresoRequisicion::CON_FACTURA,
                 "CLC {$ordenCompra->clc_folio_completo} cancelada por {$user->name}"
                 .($pagada ? ' (el pago'.($ordenCompra->transferencia_numero ? " {$ordenCompra->transferencia_numero}" : '').' queda anulado)' : '')
-                .". Motivo: {$motivo}. Sigue cancelar la orden de compra {$ordenCompra->folio_completo}.");
+                .". Motivo: {$motivo}. ".($apoyo ? "Sigue cancelar la requisición {$ordenCompra->requisicion?->folio_completo}." : "Sigue cancelar la orden de compra {$ordenCompra->folio_completo}."));
         });
 
-        return response()->json(['message' => "CLC {$ordenCompra->clc_folio_completo} cancelada. Sigue cancelar la orden de compra."]);
+        return response()->json(['message' => "CLC {$ordenCompra->clc_folio_completo} cancelada. "
+            .($ordenCompra->sin_factura ? 'Sigue cancelar la requisición.' : 'Sigue cancelar la orden de compra.')]);
     }
 
     /**
@@ -535,7 +584,7 @@ class OrdenCompraController extends Controller
             'clc_generada_at' => now(),
         ]);
 
-        $this->bitacora($ordenCompra->requisicion, EgresoRequisicion::CLC_GENERADA, "CLC {$ordenCompra->clc_folio_completo} generada por $".number_format($ordenCompra->importe, 2)." a favor de {$ordenCompra->proveedor?->nombre}{$nota}.");
+        $this->bitacora($ordenCompra->requisicion, EgresoRequisicion::CLC_GENERADA, "CLC {$ordenCompra->clc_folio_completo} generada por $".number_format($ordenCompra->importe, 2)." a favor de {$ordenCompra->aFavorDe()}{$nota}.");
         app(TramiteClc::class)->generada($ordenCompra, auth()->user());
     }
 

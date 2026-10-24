@@ -52,9 +52,10 @@
         $fechaClc = \Carbon\Carbon::parse($orden->clc_fecha);
 
         // Cuenta para el pago: la del catálogo de proveedores o, si no tiene, la principal de sus cuentas adicionales.
-        $cuenta = $proveedor->clabe || $proveedor->cuenta_bancaria
+        // Apoyo sin factura (folio AP-…): se paga al beneficiario de la requisición, sin cuenta de proveedor.
+        $cuenta = ! $proveedor ? null : ($proveedor->clabe || $proveedor->cuenta_bancaria
             ? (object) ['banco' => $proveedor->banco, 'clabe' => $proveedor->clabe, 'cuenta' => $proveedor->cuenta_bancaria]
-            : $proveedor->cuentas()->where('activo', true)->orderByDesc('principal')->with('banco')->first();
+            : $proveedor->cuentas()->where('activo', true)->orderByDesc('principal')->with('banco')->first());
 
         // Clasificación presupuestal: un renglón por fuente / proyecto / partida, con el nombre de la partida del presupuesto.
         $renglones = ($req?->tbEgresoRequisicionDetalles ?? collect())
@@ -142,16 +143,16 @@
         <tr>
             <td class="etiqueta" style="width: 15%;">Clave de la unidad administrativa</td>
             <td class="hueco"></td>
-            <td class="etiqueta">Proveedor:</td>
+            <td class="etiqueta">{{ $orden->sin_factura ? 'Beneficiario:' : 'Proveedor:' }}</td>
             <td class="hueco"></td>
             <td class="etiqueta" style="width: 21%;">R.F.C:</td>
         </tr>
         <tr>
             <td class="caja">{{ $unidad?->clave ?? '—' }}</td>
             <td></td>
-            <td class="caja">{{ mb_strtoupper($proveedor->nombre) }}</td>
+            <td class="caja">{{ mb_strtoupper($orden->aFavorDe() ?? '') }}</td>
             <td></td>
-            <td class="caja">{{ $proveedor->rfc ?? '—' }}</td>
+            <td class="caja">{{ $proveedor?->rfc ?? '—' }}</td>
         </tr>
     </table>
 
@@ -160,8 +161,8 @@
             <tr>
                 <th rowspan="3" style="width: 8%;">O.C.</th>
                 <th colspan="4">Clasificación presupuestal</th>
-                <th rowspan="3" style="width: 19%;">Número de factura</th>
-                <th rowspan="3" style="width: 6%;">Fecha de factura</th>
+                <th rowspan="3" style="width: 19%;">{{ $orden->sin_factura ? 'Documento de referencia' : 'Número de factura' }}</th>
+                <th rowspan="3" style="width: 6%;">{{ $orden->sin_factura ? 'Fecha de referencia' : 'Fecha de factura' }}</th>
                 <th rowspan="3" style="width: 7%;">Sub Total</th>
                 <th rowspan="3" style="width: 5%;">Desc.</th>
                 <th rowspan="3" style="width: 6%;">I.V.A.</th>
@@ -188,8 +189,8 @@
                     <td>{{ $r['proyecto'] }}</td>
                     <td>{{ $r['partida'] }}</td>
                     <td>{{ mb_strtoupper($r['nombre'] ?? '') }}</td>
-                    <td style="font-size: 6.2pt; white-space: nowrap;">{{ $orden->xml_uuid }}</td>
-                    <td>{{ $orden->xml_fecha?->format('d/m/Y') }}</td>
+                    <td style="font-size: 6.2pt; white-space: nowrap;">{{ $orden->sin_factura ? $req?->beneficiario_referencia : $orden->xml_uuid }}</td>
+                    <td>{{ $orden->sin_factura ? $req?->beneficiario_fecha?->format('d/m/Y') : $orden->xml_fecha?->format('d/m/Y') }}</td>
                     <td class="num">{{ $n($r['subtotal']) }}</td>
                     <td class="num">0.00</td>
                     <td class="num">{{ $n($r['iva']) }}</td>
