@@ -68,7 +68,10 @@ class RequisicionController extends Controller
 
         $unidades = $this->unidadesVisibles($user);
         if ($unidades !== null) {
-            $query->whereIn('id_cat_egreso_unidad_administrativa', $unidades);
+            // El taller también ve las de mantenimiento vehicular, que van a nombre de otras secretarías.
+            $query->where(fn ($q) => $q->whereIn('id_cat_egreso_unidad_administrativa', $unidades)
+                ->when($user->can('vehiculos-mantenimiento'), fn ($w) => $w->orWhereIn('id_tb_egreso_requisicion',
+                    VehiculoMantenimiento::whereNotNull('id_tb_egreso_requisicion')->select('id_tb_egreso_requisicion'))));
         }
 
         $this->filtrar($query, $request);
@@ -167,6 +170,8 @@ class RequisicionController extends Controller
         $oc = $requisicion->ordenCompra;
         $m = VehiculoMantenimiento::with('vehiculo', 'departamento')->where('id_tb_egreso_requisicion', $requisicion->id_tb_egreso_requisicion)->first();
         $editable = $this->puedeEditarse($requisicion);
+        // Mantenimiento vehicular: el taller hace los pasos de Recursos Materiales (VehiculoMantenimiento::delTaller).
+        $taller = $m !== null && $user->can('vehiculos-mantenimiento');
         $sinSuficiencia = $requisicion->suficiencia !== true;
 
         return response()->json([
@@ -278,14 +283,14 @@ class RequisicionController extends Controller
                 ->orderByDesc('id')->get(['id', 'folio_completo', 'tipo', 'estado', 'importe']),
             // Las mismas condiciones con que SIEG muestra cada botón (Show.tsx); el servidor las vuelve a revisar.
             'puede' => [
-                'editar' => in_array($estado, [1, 4], true) && $editable && $user->can('requisiciones-edit'),
+                'editar' => in_array($estado, [1, 4], true) && $editable && ($user->can('requisiciones-edit') || $taller),
                 'enviar' => in_array($estado, [1, 4], true) && $editable && $user->can('requisiciones-create'),
                 'validar' => $estado === 2 && $user->hasRole(['Super Admin', 'Admin']) && $user->can('requisiciones-edit'),
                 'imprimir' => $estado === 3 || ($estado >= 5 && $estado !== EgresoRequisicion::CANCELADA),
-                'enviarRecursos' => $estado === 3 && $user->can('requisiciones-edit'),
-                'recibir' => $estado === 5 && $user->can('requisiciones-cotizar'),
+                'enviarRecursos' => $estado === 3 && ($user->can('requisiciones-edit') || $taller),
+                'recibir' => $estado === 5 && ($user->can('requisiciones-cotizar') || $taller),
                 'devolver' => in_array($estado, [5, 6], true) && $sinSuficiencia && $user->can('requisiciones-devolver'),
-                'cotizar' => $estado === 6 && $editable && $user->can('requisiciones-cotizar'),
+                'cotizar' => $estado === 6 && $editable && ($user->can('requisiciones-cotizar') || $taller),
                 'suficiencia' => $estado === 6 && $sinSuficiencia && $user->can('requisiciones-suficiencia'),
                 'extemporanea' => $requisicion->extemporaneaPendiente() && $user->can('requisiciones-extemporaneas'),
                 'cambiarFecha' => $this->puedeCambiarFecha($requisicion),
@@ -293,11 +298,11 @@ class RequisicionController extends Controller
                 'eliminar' => $user->can('requisiciones-delete') && in_array($estado, [1, 4], true),
                 'modificacion' => $requisicion->suficiencia === false && $user->can('modificaciones-create'),
                 // Orden de compra (SIEG: Show.tsx y OrdenCompraController).
-                'generarOrden' => $estado === EgresoRequisicion::COMPROMETIDA && ! $oc && $user->can('ordenes-compra-create'),
+                'generarOrden' => $estado === EgresoRequisicion::COMPROMETIDA && ! $oc && ($user->can('ordenes-compra-create') || $taller),
                 'imprimirOrden' => $oc && ! $oc->cancelada_at,
-                'cambiarProveedor' => $oc && ! $oc->cancelada_at && ! $oc->xml_uuid && $user->can('ordenes-compra-create'),
+                'cambiarProveedor' => $oc && ! $oc->cancelada_at && ! $oc->xml_uuid && ($user->can('ordenes-compra-create') || $taller),
                 'cambiarFechaOrden' => $oc && ! $oc->cancelada_at && $user->can('ordenes-compra-fecha'),
-                'cargarXml' => $oc && ! $oc->cancelada_at && ! $oc->xml_uuid && $user->can('ordenes-compra-create'),
+                'cargarXml' => $oc && ! $oc->cancelada_at && ! $oc->xml_uuid && ($user->can('ordenes-compra-create') || $taller),
                 'descargarXml' => $oc && $oc->xml_path !== null,
                 'verificarSat' => $oc && $oc->xml_uuid && $user->can('ordenes-compra-verificar-sat'),
                 'refacturar' => $oc && $oc->xml_uuid && ! $oc->cancelada_at && ! ($oc->pago_fecha && ! $oc->clc_cancelada_at) && $user->can('ordenes-compra-refacturar'),
@@ -382,8 +387,10 @@ class RequisicionController extends Controller
         abort_unless($this->puedeEditarse($requisicion), 422, 'Esta requisición ya no se puede modificar en su estado actual.');
 
         $esCotizacion = (int) $requisicion->id_cat_egreso_requisicion_estado === 6;
-        abort_if($esCotizacion && ! $request->user()->can('requisiciones-cotizar'), 403, 'La cotización la captura Recursos Materiales.');
-        abort_if(! $esCotizacion && ! $request->user()->can('requisiciones-edit'), 403);
+        // En las de mantenimiento vehicular, el taller captura y cotiza (VehiculoMantenimiento::delTaller).
+        $taller = VehiculoMantenimiento::delTaller($request->user(), $requisicion->id_tb_egreso_requisicion);
+        abort_if($esCotizacion && ! $taller && ! $request->user()->can('requisiciones-cotizar'), 403, 'La cotización la captura Recursos Materiales.');
+        abort_if(! $esCotizacion && ! $taller && ! $request->user()->can('requisiciones-edit'), 403);
 
         $unidadesQuery = EgresoUnidadAdministrativa::where('activo', 1);
         $idsVisibles = $this->unidadesVisibles($request->user());
@@ -713,8 +720,10 @@ class RequisicionController extends Controller
         abort_unless($this->puedeEditarse($requisicion), 403, 'Esta requisición ya no se puede modificar en su estado actual.');
 
         $esCotizacion = (int) $requisicion->id_cat_egreso_requisicion_estado === 6;
-        abort_if($esCotizacion && ! $request->user()->can('requisiciones-cotizar'), 403, 'La cotización la captura Recursos Materiales.');
-        abort_if(! $esCotizacion && ! $request->user()->can('requisiciones-edit'), 403);
+        // En las de mantenimiento vehicular, el taller captura y cotiza (VehiculoMantenimiento::delTaller).
+        $taller = VehiculoMantenimiento::delTaller($request->user(), $requisicion->id_tb_egreso_requisicion);
+        abort_if($esCotizacion && ! $taller && ! $request->user()->can('requisiciones-cotizar'), 403, 'La cotización la captura Recursos Materiales.');
+        abort_if(! $esCotizacion && ! $taller && ! $request->user()->can('requisiciones-edit'), 403);
 
         if ($esCotizacion) {
             $validated = $request->validate([
@@ -1048,17 +1057,25 @@ class RequisicionController extends Controller
     public function enviarRecursosMateriales(EgresoRequisicion $requisicion): JsonResponse
     {
         $this->autorizarUnidad($requisicion);
+        $deTaller = VehiculoMantenimiento::where('id_tb_egreso_requisicion', $requisicion->id_tb_egreso_requisicion)->exists();
+        abort_unless(auth()->user()->can('requisiciones-edit') || ($deTaller && auth()->user()->can('vehiculos-mantenimiento')), 403);
 
-        if (! $this->cambiarEstado($requisicion, 3, 5, 'Enviado a Recursos Materiales. PDF firmado por el titular.')) {
-            return $this->error('Solo se envía a Recursos Materiales una requisición aprobada.');
+        // Las de mantenimiento vehicular las cotiza el taller, no Recursos Materiales.
+        $destino = $deTaller ? 'al taller para cotizar' : 'a Recursos Materiales';
+        if (! $this->cambiarEstado($requisicion, 3, 5, "Enviado {$destino}. PDF firmado por el titular.")) {
+            return $this->error('Solo se envía a cotizar una requisición aprobada.');
         }
 
-        return response()->json(['message' => "Requisición {$requisicion->folio_completo} enviada a Recursos Materiales."]);
+        return response()->json(['message' => "Requisición {$requisicion->folio_completo} enviada {$destino}."]);
     }
 
     public function recibido(EgresoRequisicion $requisicion): JsonResponse
     {
-        if (! $this->cambiarEstado($requisicion, 5, 6, 'Recibido en Recursos Materiales. Inicia proceso de cotización.')) {
+        $taller = VehiculoMantenimiento::delTaller(auth()->user(), $requisicion->id_tb_egreso_requisicion);
+        abort_unless($taller || auth()->user()->can('requisiciones-cotizar'), 403);
+
+        $observaciones = $taller ? 'Recibido en el taller. Inicia proceso de cotización.' : 'Recibido en Recursos Materiales. Inicia proceso de cotización.';
+        if (! $this->cambiarEstado($requisicion, 5, 6, $observaciones)) {
             return $this->error('Solo se recibe una requisición enviada a Recursos Materiales.');
         }
 

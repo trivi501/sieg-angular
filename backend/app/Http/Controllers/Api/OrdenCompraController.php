@@ -8,6 +8,7 @@ use App\Models\EgresoRequisicionBitacora;
 use App\Models\OrdenCompra;
 use App\Models\OrdenCompraRefactura;
 use App\Models\Proveedor;
+use App\Models\VehiculoMantenimiento;
 use App\Services\EstadoCfdiSat;
 use App\Services\TramiteClc;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -111,6 +112,7 @@ class OrdenCompraController extends Controller
 
     public function store(Request $request, EgresoRequisicion $requisicion): JsonResponse
     {
+        $this->exigirComprasOTaller($requisicion);
         if ($requisicion->suficiencia !== true || (int) $requisicion->id_cat_egreso_requisicion_estado !== EgresoRequisicion::COMPROMETIDA) {
             abort(403, 'Solo se genera orden de compra para requisiciones comprometidas (con suficiencia presupuestal).');
         }
@@ -160,6 +162,7 @@ class OrdenCompraController extends Controller
      */
     public function cambiarProveedor(Request $request, OrdenCompra $ordenCompra): JsonResponse
     {
+        $this->exigirComprasOTaller($ordenCompra->requisicion);
         if ($ordenCompra->cancelada_at) {
             return $this->error('La orden de compra está cancelada.');
         }
@@ -247,6 +250,7 @@ class OrdenCompraController extends Controller
      */
     public function cargarXml(Request $request, OrdenCompra $ordenCompra, EstadoCfdiSat $estadoSat): JsonResponse
     {
+        $this->exigirComprasOTaller($ordenCompra->requisicion);
         if ($ordenCompra->cancelada_at) {
             return $this->error('La orden de compra está cancelada.');
         }
@@ -645,10 +649,26 @@ class OrdenCompraController extends Controller
      * Materiales y quien participa en el trámite de CLC ven todos (en SIEG el PDF de la orden y el XML no
      * revisaban el área). Generar la CLC ($soloArea) es del área, Admin o Recursos Materiales, como en SIEG.
      */
+    /**
+     * Generar la orden, cambiar proveedor y cargar la factura: Recursos Materiales (ordenes-compra-create) o,
+     * en las requisiciones de mantenimiento vehicular, el taller.
+     */
+    private function exigirComprasOTaller(?EgresoRequisicion $requisicion): void
+    {
+        $user = auth()->user();
+        abort_unless($user->can('ordenes-compra-create') || VehiculoMantenimiento::delTaller($user, $requisicion?->id_tb_egreso_requisicion), 403,
+            'Esto lo hace Recursos Materiales (o el taller, si es un mantenimiento vehicular).');
+    }
+
     private function autorizarArea(EgresoRequisicion $requisicion, bool $soloArea = false): void
     {
         $user = auth()->user();
         if ($user->hasRole(['Super Admin', 'Admin']) || $user->can('ordenes-compra-create')) {
+            return;
+        }
+        // El taller trabaja sus requisiciones de mantenimiento aunque vayan a nombre de otra secretaría,
+        // pero la CLC (soloArea) la genera el área de resguardo.
+        if (! $soloArea && VehiculoMantenimiento::delTaller($user, $requisicion->id_tb_egreso_requisicion)) {
             return;
         }
         // Quien participa en el trámite de CLC (no basta clc-index: también lo tiene el área solicitante).

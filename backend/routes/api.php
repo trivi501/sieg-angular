@@ -69,8 +69,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::whereNumber('requisicion')->group(function () {
         Route::get('requisiciones/{requisicion}', [RequisicionController::class, 'show'])->middleware('permission:requisiciones-index');
         // La captura la edita el área (requisiciones-edit); la cotización, Recursos Materiales (requisiciones-cotizar).
-        Route::get('requisiciones/{requisicion}/edicion', [RequisicionController::class, 'edicion'])->middleware('permission:requisiciones-edit|requisiciones-cotizar');
-        Route::put('requisiciones/{requisicion}', [RequisicionController::class, 'update'])->middleware('permission:requisiciones-edit|requisiciones-cotizar');
+        Route::get('requisiciones/{requisicion}/edicion', [RequisicionController::class, 'edicion'])->middleware('permission:requisiciones-edit|requisiciones-cotizar|vehiculos-mantenimiento');
+        Route::put('requisiciones/{requisicion}', [RequisicionController::class, 'update'])->middleware('permission:requisiciones-edit|requisiciones-cotizar|vehiculos-mantenimiento');
         Route::delete('requisiciones/{requisicion}', [RequisicionController::class, 'destroy'])->middleware('permission:requisiciones-delete');
         Route::get('requisiciones/{requisicion}/pdf', [RequisicionController::class, 'pdf'])->middleware('permission:requisiciones-index');
         Route::post('requisiciones/{requisicion}/autorizar-extemporanea', [RequisicionController::class, 'autorizarExtemporanea'])->middleware('permission:requisiciones-extemporaneas');
@@ -80,21 +80,21 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('requisiciones/{requisicion}/enviar', [RequisicionController::class, 'enviarRevision'])->middleware('permission:requisiciones-create');
         Route::post('requisiciones/{requisicion}/aprobar', [RequisicionController::class, 'aprobar'])->middleware('permission:requisiciones-edit');
         Route::post('requisiciones/{requisicion}/rechazar', [RequisicionController::class, 'rechazar'])->middleware('permission:requisiciones-edit');
-        Route::post('requisiciones/{requisicion}/recursos-materiales', [RequisicionController::class, 'enviarRecursosMateriales'])->middleware('permission:requisiciones-edit');
+        Route::post('requisiciones/{requisicion}/recursos-materiales', [RequisicionController::class, 'enviarRecursosMateriales'])->middleware('permission:requisiciones-edit|vehiculos-mantenimiento');
         Route::post('requisiciones/{requisicion}/devolver-area', [RequisicionController::class, 'devolverArea'])->middleware('permission:requisiciones-devolver');
-        Route::post('requisiciones/{requisicion}/recibido', [RequisicionController::class, 'recibido'])->middleware('permission:requisiciones-cotizar');
+        Route::post('requisiciones/{requisicion}/recibido', [RequisicionController::class, 'recibido'])->middleware('permission:requisiciones-cotizar|vehiculos-mantenimiento');
         Route::post('requisiciones/{requisicion}/suficiencia', [RequisicionController::class, 'validarSuficiencia'])->middleware('permission:requisiciones-suficiencia');
     });
 
     // Órdenes de compra (SIEG: routes/web.php), con los mismos permisos. La CLC y el pago van con su trámite.
     Route::get('ordenes-compra', [OrdenCompraController::class, 'index'])->middleware('permission:recursos-materiales-index|ordenes-compra-create|ordenes-compra-cancelar|ordenes-compra-pagar|ordenes-compra-verificar-sat');
-    Route::get('ordenes-compra/proveedores', [OrdenCompraController::class, 'proveedores'])->middleware('permission:ordenes-compra-create');
-    Route::post('requisiciones/{requisicion}/orden-compra', [OrdenCompraController::class, 'store'])->whereNumber('requisicion')->middleware('permission:ordenes-compra-create');
+    Route::get('ordenes-compra/proveedores', [OrdenCompraController::class, 'proveedores'])->middleware('permission:ordenes-compra-create|vehiculos-mantenimiento');
+    Route::post('requisiciones/{requisicion}/orden-compra', [OrdenCompraController::class, 'store'])->whereNumber('requisicion')->middleware('permission:ordenes-compra-create|vehiculos-mantenimiento');
     Route::whereNumber('ordenCompra')->group(function () {
         Route::get('ordenes-compra/{ordenCompra}/pdf', [OrdenCompraController::class, 'pdf'])->middleware('permission:requisiciones-index');
         Route::get('ordenes-compra/{ordenCompra}/xml', [OrdenCompraController::class, 'descargarXml'])->middleware('permission:requisiciones-index');
-        Route::post('ordenes-compra/{ordenCompra}/xml', [OrdenCompraController::class, 'cargarXml'])->middleware('permission:ordenes-compra-create');
-        Route::post('ordenes-compra/{ordenCompra}/proveedor', [OrdenCompraController::class, 'cambiarProveedor'])->middleware('permission:ordenes-compra-create');
+        Route::post('ordenes-compra/{ordenCompra}/xml', [OrdenCompraController::class, 'cargarXml'])->middleware('permission:ordenes-compra-create|vehiculos-mantenimiento');
+        Route::post('ordenes-compra/{ordenCompra}/proveedor', [OrdenCompraController::class, 'cambiarProveedor'])->middleware('permission:ordenes-compra-create|vehiculos-mantenimiento');
         Route::post('ordenes-compra/{ordenCompra}/fecha', [OrdenCompraController::class, 'cambiarFecha'])->middleware('permission:ordenes-compra-fecha');
         Route::post('ordenes-compra/{ordenCompra}/verificar-sat', [OrdenCompraController::class, 'verificarSat'])->middleware('permission:ordenes-compra-verificar-sat');
         Route::post('ordenes-compra/{ordenCompra}/refacturar', [OrdenCompraController::class, 'refacturar'])->middleware('permission:ordenes-compra-refacturar');

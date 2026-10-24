@@ -50,7 +50,7 @@ const routes: Routes = [
       },
       {
         path: 'requisiciones/:id/editar',
-        data: { permission: ['requisiciones-edit', 'requisiciones-cotizar'] },
+        data: { permission: ['requisiciones-edit', 'requisiciones-cotizar', 'vehiculos-mantenimiento'] },
         loadComponent: () => import('./pages/requisiciones/requisicion-form.component').then((c) => c.RequisicionFormComponent)
       },
       {

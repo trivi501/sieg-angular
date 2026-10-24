@@ -17,6 +17,17 @@ class VehiculoMantenimiento extends Model
     /** Únicas partidas permitidas en la requisición de un mantenimiento vehicular. */
     public const PARTIDAS = ['2961', '2981', '3551', '3571', '2614'];
 
+    /**
+     * El taller (vehiculos-mantenimiento) hace en las requisiciones de mantenimiento lo que en las demás hace
+     * Recursos Materiales: enviarla, recibirla, cotizarla, generar la orden de compra y cargar la factura.
+     * La aprobación (Admin), la suficiencia (Control Presupuestal) y la CLC (el área de resguardo) no cambian.
+     */
+    public static function delTaller(?User $user, int|string|null $idRequisicion): bool
+    {
+        return $user !== null && $idRequisicion !== null && $user->can('vehiculos-mantenimiento')
+            && static::where('id_tb_egreso_requisicion', $idRequisicion)->exists();
+    }
+
     protected $table = 'vehiculo_mantenimientos';
 
     protected $fillable = [
