@@ -45,7 +45,12 @@ export class RequisicionDetalleComponent {
 
   readonly money = money;
   readonly claseEstado = claseEstado;
-  readonly id = Number(inject(ActivatedRoute).snapshot.paramMap.get('id'));
+  private readonly ruta = inject(ActivatedRoute);
+  readonly id = Number(this.ruta.snapshot.paramMap.get('id'));
+  /** Acción pedida desde el menú contextual de la lista (?accion=): se abre una vez al cargar. */
+  private accionPendiente = this.ruta.snapshot.queryParamMap.get('accion');
+  /** La de la orden de compra (?accion=oc:…) la abre el componente de la orden. */
+  accionOrden = signal<string | null>(null);
 
   d = signal<DetalleRequisicion | null>(null);
   error = signal('');
@@ -72,10 +77,28 @@ export class RequisicionDetalleComponent {
 
   cargar(): void {
     this.servicio.detalle(this.id).subscribe({
-      next: (d) => this.d.set(d),
+      next: (d) => {
+        this.d.set(d);
+        this.abrirAccionPendiente();
+      },
       error: (e: HttpErrorResponse) =>
         this.error.set(e.status === 404 ? 'La requisición no existe.' : e.status === 403 ? erroresDe(e).mensaje || 'No tienes acceso a esta requisición.' : erroresDe(e).mensaje)
     });
+  }
+
+  private abrirAccionPendiente(): void {
+    const accion = this.accionPendiente;
+    if (!accion) {
+      return;
+    }
+    this.accionPendiente = null;
+    // Se quita de la URL para que al recargar no se vuelva a abrir.
+    this.router.navigate([], { relativeTo: this.ruta, queryParams: {}, replaceUrl: true });
+    if (accion.startsWith('oc:')) {
+      this.accionOrden.set(accion.slice(3));
+    } else if (this.acciones[accion]) {
+      setTimeout(() => this.abrir(accion));
+    }
   }
 
   nombre(tipo: 'fuentes' | 'proyectos' | 'partidas', clave: string): string {

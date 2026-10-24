@@ -15,6 +15,14 @@
   }
 </div>
 
+@if (aviso(); as a) {
+  <div class="alert alert-{{ a.tipo }} alert-dismissible py-2">
+    {{ a.texto }}
+    <button type="button" class="btn-close" (click)="aviso.set(null)"></button>
+  </div>
+}
+<p class="small text-muted mb-2">Clic derecho sobre una requisición para ver sus acciones.</p>
+
 <div class="card">
   <div class="card-body">
     <form class="row g-2 mb-3" (ngSubmit)="cargar(1)">
@@ -63,7 +71,7 @@
         </thead>
         <tbody>
           @for (r of datos()?.data ?? []; track r.id) {
-            <tr>
+            <tr class="fila-menu" (contextmenu)="menu.abrir($event, r.id, r.folio)">
               <td>
                 <a [routerLink]="['/requisiciones', r.id]" class="fw-semibold">{{ r.folio }}</a>
               </td>
@@ -103,3 +111,6 @@
     }
   </div>
 </div>
+
+<!-- Clic derecho en una fila: sus acciones -->
+<app-menu-requisicion #menu (aviso)="aviso.set($event)" (cambio)="cargar(1)" />

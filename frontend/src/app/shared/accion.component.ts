@@ -43,6 +43,50 @@ import {
   ToolOutline
 } from '@ant-design/icons-angular/icons';
 
+/** Iconos de las acciones (botones y menú contextual); se registran una vez. */
+export const ICONOS_ACCION = [
+  ArrowRightOutline,
+  CalendarOutline,
+  CarOutline,
+  CheckOutline,
+  CloseCircleOutline,
+  CloseOutline,
+  DeleteOutline,
+  DownloadOutline,
+  EditOutline,
+  EyeOutline,
+  FileAddOutline,
+  FileDoneOutline,
+  FilePdfOutline,
+  FileTextOutline,
+  HistoryOutline,
+  ImportOutline,
+  ExportOutline,
+  InboxOutline,
+  PrinterOutline,
+  SafetyCertificateOutline,
+  ShopOutline,
+  StopOutline,
+  SyncOutline,
+  UndoOutline,
+  UserSwitchOutline,
+  PlusOutline,
+  SearchOutline,
+  ClearOutline,
+  UploadOutline,
+  FileExcelOutline,
+  CalculatorOutline,
+  DatabaseOutline,
+  ArrowLeftOutline,
+  HomeOutline,
+  DollarOutline,
+  SwapOutline,
+  RollbackOutline,
+  SendOutline,
+  CheckCircleOutline,
+  ToolOutline
+];
+
 /**
  * Botón de acción solo con icono: el nombre de la acción queda como tooltip y para lectores de pantalla.
  * Uso: <button type="button" class="btn btn-sm btn-outline-primary" appAccion="Editar" icono="edit" (click)="…"></button>
@@ -64,47 +108,6 @@ export class AccionComponent {
   icono = input.required<string>();
 
   constructor() {
-    inject(IconService).addIcon(
-      ArrowRightOutline,
-      CalendarOutline,
-      CarOutline,
-      CheckOutline,
-      CloseCircleOutline,
-      CloseOutline,
-      DeleteOutline,
-      DownloadOutline,
-      EditOutline,
-      EyeOutline,
-      FileAddOutline,
-      FileDoneOutline,
-      FilePdfOutline,
-      FileTextOutline,
-      HistoryOutline,
-      ImportOutline,
-      ExportOutline,
-      InboxOutline,
-      PrinterOutline,
-      SafetyCertificateOutline,
-      ShopOutline,
-      StopOutline,
-      SyncOutline,
-      UndoOutline,
-      UserSwitchOutline,
-      PlusOutline,
-      SearchOutline,
-      ClearOutline,
-      UploadOutline,
-      FileExcelOutline,
-      CalculatorOutline,
-      DatabaseOutline,
-      ArrowLeftOutline,
-      HomeOutline,
-      DollarOutline,
-      SwapOutline,
-      RollbackOutline,
-      SendOutline,
-      CheckCircleOutline,
-      ToolOutline
-    );
+    inject(IconService).addIcon(...ICONOS_ACCION);
   }
 }

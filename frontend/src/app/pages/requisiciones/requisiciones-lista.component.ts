@@ -9,6 +9,7 @@ import { PaginacionComponent } from '../admin/paginacion.component';
 import { ListaRequisiciones, RequisicionesService, claseEstado } from './requisiciones.service';
 import { SelectBusquedaDirective } from 'src/app/shared/select-busqueda.directive';
 import { AccionComponent } from 'src/app/shared/accion.component';
+import { MenuRequisicionComponent } from './menu-requisicion.component';
 
 /**
  * Requisiciones de la secretaría del usuario (Admin y Control Presupuestal: todas) o, con
@@ -16,12 +17,15 @@ import { AccionComponent } from 'src/app/shared/accion.component';
  */
 @Component({
   selector: 'app-requisiciones-lista',
-  imports: [AccionComponent, SelectBusquedaDirective, FormsModule, RouterLink, PaginacionComponent, CanDirective, DatePipe],
+  imports: [MenuRequisicionComponent, AccionComponent, SelectBusquedaDirective, FormsModule, RouterLink, PaginacionComponent, CanDirective, DatePipe],
   templateUrl: './requisiciones-lista.component.html',
   styles: `
     td,
     th {
       font-size: 13px;
+    }
+    .fila-menu {
+      cursor: context-menu;
     }
     .concepto {
       max-width: 280px;
@@ -40,6 +44,8 @@ export class RequisicionesListaComponent {
   readonly claseEstado = claseEstado;
 
   datos = signal<ListaRequisiciones | null>(null);
+  /** Resultado de una acción del menú contextual (p. ej. eliminar). */
+  aviso = signal<{ tipo: 'success' | 'danger'; texto: string } | null>(null);
   /** El panel de inicio llega con ?estado= ya filtrado. */
   filtros: Record<string, string> = { folio_completo: '', unidad: '', concepto: '', estado: this.ruta.queryParamMap.get('estado') ?? '', año: '' };
 

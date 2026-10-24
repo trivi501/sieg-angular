@@ -1,4 +1,4 @@
-import { Component, TemplateRef, computed, inject, input, output, signal, viewChild } from '@angular/core';
+import { Component, ElementRef, TemplateRef, computed, effect, inject, input, output, signal, viewChild } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
@@ -38,9 +38,33 @@ export class OrdenCompraComponent {
   private modal = inject(NgbModal);
 
   readonly d = input.required<DetalleRequisicion>();
+  /** Acción pedida desde el menú contextual de la lista: un diálogo, o "xml" para ir a cargar la factura. */
+  readonly accionInicial = input<string | null>(null);
   readonly actualizado = output<AvisoOrden>();
 
   private tplDialogo = viewChild.required<TemplateRef<unknown>>('dialogoTpl');
+  private archivoXml = viewChild<ElementRef<HTMLInputElement>>('archivoXml');
+  private accionHecha = false;
+
+  constructor() {
+    effect(() => {
+      const accion = this.accionInicial();
+      if (!accion || this.accionHecha) {
+        return;
+      }
+      this.accionHecha = true;
+      // Después de pintar la orden (el campo del XML y la plantilla del diálogo ya existen).
+      setTimeout(() => {
+        if (accion === 'xml') {
+          const campo = this.archivoXml()?.nativeElement;
+          campo?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          campo?.focus();
+        } else {
+          this.abrir(accion as Dialogo);
+        }
+      });
+    });
+  }
 
   readonly money = money;
   readonly hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' });

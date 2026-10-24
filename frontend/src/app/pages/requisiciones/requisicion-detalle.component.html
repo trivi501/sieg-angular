@@ -248,7 +248,7 @@
       }
 
       <!-- Orden de compra y factura -->
-      <app-orden-compra [d]="d" (actualizado)="ordenActualizada($event)" />
+      <app-orden-compra [d]="d" [accionInicial]="accionOrden()" (actualizado)="ordenActualizada($event)" />
 
       @if (d.modificaciones.length) {
         <div class="card">
