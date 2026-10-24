@@ -483,7 +483,7 @@ class OrdenCompraController extends Controller
 
         $apoyo = DB::transaction(function () use ($requisicion) {
             $año = (int) now('America/Mexico_City')->format('Y');
-            $folio = (OrdenCompra::where('sin_factura', true)->where('año', $año)->lockForUpdate()->max('folio') ?? 0) + 1;
+            $folio = (OrdenCompra::where('sin_factura', true)->where('folio_completo', 'like', "AP-{$año}-%")->lockForUpdate()->max('folio') ?? 0) + 1;
 
             $apoyo = OrdenCompra::create([
                 'id_tb_egreso_requisicion' => $requisicion->id_tb_egreso_requisicion,

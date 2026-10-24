@@ -90,7 +90,25 @@
         });
 
         // Trámite de servicios: un renglón por factura aunque sean de la misma partida, con su folio fiscal y su ISR.
-        if ($orden->tramite_servicio_id) {
+        // Fondo revolvente: además, uno por cada partida de la factura, solo con el monto de sus artículos.
+        $esFondo = $orden->tramite_servicio_id && \App\Models\TramiteServicio::whereKey($orden->tramite_servicio_id)->value('tipo') === 'fondo';
+        if ($esFondo) {
+            $nombrePartida = fn ($p) => \App\Models\PresupuestoEgreso::where('CLAVE', $unidad?->clave)->where('CLAVE3', $p['fuente'])
+                ->where('CLAVE6', $p['proyecto'])->where('PARTIDA', $p['partida'])->value('NOMBRE_PARTIDA');
+            $renglones = \App\Models\TramiteServicioFactura::where('tramite_servicio_id', $orden->tramite_servicio_id)->orderBy('id')->get()
+                ->flatMap(fn ($f) => collect($f->porPartida())->map(fn ($p) => [
+                    'fuente' => $p['fuente'],
+                    'proyecto' => $p['proyecto'],
+                    'partida' => $p['partida'],
+                    'nombre' => $nombrePartida($p),
+                    'factura' => $f->uuid,
+                    'fecha_factura' => $f->fecha?->format('d/m/Y'),
+                    'subtotal' => $p['base'],
+                    'iva' => $p['iva'],
+                    'isr' => $p['isr'],
+                    'importe' => $p['importe'],
+                ]))->values();
+        } elseif ($orden->tramite_servicio_id) {
             $renglones = \App\Models\TramiteServicioFactura::where('tramite_servicio_id', $orden->tramite_servicio_id)->orderBy('id')->get()
                 ->map(fn ($f) => [
                     'fuente' => $f->fuente,
@@ -179,8 +197,8 @@
             <tr>
                 <th rowspan="3" style="width: 8%;">O.C.</th>
                 <th colspan="4">Clasificación presupuestal</th>
-                <th rowspan="3" style="width: 19%;">{{ $orden->sin_factura ? 'Documento de referencia' : 'Número de factura' }}</th>
-                <th rowspan="3" style="width: 6%;">{{ $orden->sin_factura ? 'Fecha de referencia' : 'Fecha de factura' }}</th>
+                <th rowspan="3" style="width: 19%;">{{ $orden->sin_factura && ! $orden->tramite_servicio_id ? 'Documento de referencia' : 'Número de factura' }}</th>
+                <th rowspan="3" style="width: 6%;">{{ $orden->sin_factura && ! $orden->tramite_servicio_id ? 'Fecha de referencia' : 'Fecha de factura' }}</th>
                 <th rowspan="3" style="width: 7%;">Sub Total</th>
                 <th rowspan="3" style="width: 5%;">Desc.</th>
                 <th rowspan="3" style="width: 6%;">I.V.A.</th>

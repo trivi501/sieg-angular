@@ -59,6 +59,19 @@ class Cfdi
 
         $conceptos = [];
         foreach ($xpath->query('/*[local-name()="Comprobante"]/*[local-name()="Conceptos"]/*[local-name()="Concepto"]') as $c) {
+            // Impuestos del propio concepto: para repartir una factura entre partidas con el monto exacto de cada artículo.
+            $ivaConcepto = 0.0;
+            foreach ($xpath->query('./*[local-name()="Impuestos"]/*[local-name()="Traslados"]/*[local-name()="Traslado"]', $c) as $t) {
+                if ($attr($t, 'Impuesto') === '002') {
+                    $ivaConcepto += $num($t, 'Importe');
+                }
+            }
+            $isrConcepto = 0.0;
+            foreach ($xpath->query('./*[local-name()="Impuestos"]/*[local-name()="Retenciones"]/*[local-name()="Retencion"]', $c) as $r) {
+                if ($attr($r, 'Impuesto') === '001') {
+                    $isrConcepto += $num($r, 'Importe');
+                }
+            }
             $conceptos[] = [
                 'cantidad' => is_numeric($attr($c, 'Cantidad')) ? (float) $attr($c, 'Cantidad') : null,
                 'unidad' => $attr($c, 'Unidad') ?? $attr($c, 'ClaveUnidad'),
@@ -67,7 +80,25 @@ class Cfdi
                 'valor_unitario' => $num($c, 'ValorUnitario'),
                 'descuento' => $num($c, 'Descuento'),
                 'importe' => $num($c, 'Importe'),
+                'iva' => round($ivaConcepto, 2),
+                'isr' => round($isrConcepto, 2),
             ];
+        }
+
+        // CFDI sin impuestos por concepto (versiones viejas): el IVA y el ISR del comprobante se reparten
+        // en proporción a la base de cada concepto (el último lleva el redondeo).
+        $base = array_sum(array_map(fn ($c) => $c['importe'] - $c['descuento'], $conceptos));
+        foreach (['iva' => $iva, 'isr' => $isr] as $campo => $totalImpuesto) {
+            if ($totalImpuesto > 0 && $base > 0 && array_sum(array_column($conceptos, $campo)) == 0) {
+                $repartido = 0.0;
+                foreach ($conceptos as $i => &$c) {
+                    $c[$campo] = $i === count($conceptos) - 1
+                        ? round($totalImpuesto - $repartido, 2)
+                        : round($totalImpuesto * ($c['importe'] - $c['descuento']) / $base, 2);
+                    $repartido += $c[$campo];
+                }
+                unset($c);
+            }
         }
 
         return [

@@ -50,8 +50,14 @@ class GeneradorTramiteServicio
             $requisicion->update(['suficiencia' => true, 'suficiencia_fecha' => now(), 'suficiencia_user_id' => $user->id]);
             $this->bitacora($requisicion, EgresoRequisicion::COMPROMETIDA, 'Validada contra presupuesto: CON SUFICIENCIA por $'.number_format($resultado['total'], 2).'. Requisición comprometida.');
 
-            $orden = $this->orden($tramite, $requisicion, $facturas, $proveedor, $user);
-            app(OrdenCompraController::class)->crearClc($orden, " (trámite de servicios {$tramite->folio_completo}; un renglón por factura)");
+            if ($tramite->esFondo()) {
+                // Fondo revolvente: sin orden de compra; el registro que guarda la CLC va a favor del trabajador.
+                $orden = $this->registroFondo($tramite, $requisicion, $facturas, $user);
+                app(OrdenCompraController::class)->crearClc($orden, " (fondo revolvente {$tramite->folio_completo}; un renglón por factura y partida)");
+            } else {
+                $orden = $this->orden($tramite, $requisicion, $facturas, $proveedor, $user);
+                app(OrdenCompraController::class)->crearClc($orden, " (trámite de servicios {$tramite->folio_completo}; un renglón por factura)");
+            }
 
             $tramite->update(['estado' => 'validado', 'validado_at' => now(), 'validado_user_id' => $user->id,
                 'id_tb_egreso_requisicion' => $requisicion->id_tb_egreso_requisicion, 'observaciones' => null]);
@@ -67,8 +73,9 @@ class GeneradorTramiteServicio
         $folio = (EgresoRequisicion::where('año', $año)->lockForUpdate()->max('folio') ?? 0) + 1;
         $id = (EgresoRequisicion::lockForUpdate()->max('id_tb_egreso_requisicion') ?? 0) + 1;
 
-        $base = round($facturas->sum(fn (TramiteServicioFactura $f) => $f->base()), 2);
-        $total = round($facturas->sum(fn (TramiteServicioFactura $f) => $f->importe()), 2);
+        $renglones = $this->renglones($tramite, $facturas);
+        $base = round(array_sum(array_column($renglones, 'base')), 2);
+        $total = round(array_sum(array_column($renglones, 'importe')), 2);
 
         $requisicion = EgresoRequisicion::create([
             'id_tb_egreso_requisicion' => $id,
@@ -92,22 +99,24 @@ class GeneradorTramiteServicio
             'total' => $total,
             'monto_requisicion' => $total,
             'extemporanea' => false,
+            // Fondo revolvente: el trabajador a cuyo favor va la CLC.
+            'beneficiario' => $tramite->esFondo() ? $tramite->beneficiarioFondo() : null,
         ]);
 
         $detalleId = (EgresoRequisicionDetalle::max('id_tb_egreso_requisicion_detalle') ?? 0) + 1;
-        foreach ($facturas as $f) {
-            $base = $f->base();
-            $importe = $f->importe();
+        foreach ($renglones as $ren) {
+            $base = $ren['base'];
+            $importe = $ren['importe'];
             EgresoRequisicionDetalle::create([
                 'id_tb_egreso_requisicion_detalle' => $detalleId++,
                 'id_tb_egreso_requisicion' => $id,
                 'id_cat_egreso_producto' => 1,
                 'cantidad' => 1,
-                'descripcion' => "{$f->concepto} — Factura ".($f->serieFolio() ?? $f->uuid),
-                'articulo' => $f->concepto,
-                'fuente' => $f->fuente,
-                'proyecto' => $f->proyecto,
-                'partida' => $f->partida,
+                'descripcion' => $ren['descripcion'],
+                'articulo' => $ren['articulo'],
+                'fuente' => $ren['fuente'],
+                'proyecto' => $ren['proyecto'],
+                'partida' => $ren['partida'],
                 'precio_unitario' => $base,
                 'sub_total' => $base,
                 'iva' => round($importe - $base, 2),
@@ -119,9 +128,66 @@ class GeneradorTramiteServicio
             ]);
         }
 
-        $this->bitacora($requisicion, 3, "Requisición generada del trámite de servicios {$tramite->folio_completo} ({$facturas->count()} factura(s)), validado por {$user->name}.");
+        $origen = $tramite->esFondo() ? "del fondo revolvente {$tramite->folio_completo} a favor de {$tramite->beneficiarioFondo()}" : "del trámite de servicios {$tramite->folio_completo}";
+        $this->bitacora($requisicion, 3, "Requisición generada {$origen} ({$facturas->count()} factura(s)), validado por {$user->name}.");
 
         return $requisicion;
+    }
+
+    /**
+     * Renglones de la requisición. Servicio: uno por factura (su partida). Fondo: uno por factura y partida, cada
+     * uno solo con el monto de los artículos de esa partida.
+     *
+     * @return array<int, array{fuente: ?string, proyecto: ?string, partida: ?string, base: float, importe: float, descripcion: string, articulo: ?string}>
+     */
+    private function renglones(TramiteServicio $tramite, $facturas): array
+    {
+        $renglones = [];
+        foreach ($facturas as $f) {
+            $factura = 'Factura '.($f->serieFolio() ?? $f->uuid).($tramite->esFondo() && $f->nombre_emisor ? " ({$f->nombre_emisor})" : '');
+            if (! $tramite->esFondo()) {
+                $renglones[] = ['fuente' => $f->fuente, 'proyecto' => $f->proyecto, 'partida' => $f->partida, 'base' => $f->base(),
+                    'importe' => $f->importe(), 'descripcion' => "{$f->concepto} — {$factura}", 'articulo' => $f->concepto];
+
+                continue;
+            }
+            foreach ($f->porPartida() as $p) {
+                $renglones[] = ['fuente' => $p['fuente'], 'proyecto' => $p['proyecto'], 'partida' => $p['partida'], 'base' => $p['base'],
+                    'importe' => $p['importe'], 'descripcion' => "{$f->concepto} — {$factura}", 'articulo' => $f->concepto];
+            }
+        }
+
+        return $renglones;
+    }
+
+    /** Fondo revolvente: el registro que guarda la CLC (folio FR-AÑO-0001), sin proveedor, a favor del trabajador. */
+    private function registroFondo(TramiteServicio $tramite, EgresoRequisicion $requisicion, $facturas, User $user): OrdenCompra
+    {
+        $año = (int) now('America/Mexico_City')->format('Y');
+        $folio = (OrdenCompra::where('sin_factura', true)->where('folio_completo', 'like', "FR-{$año}-%")->lockForUpdate()->max('folio') ?? 0) + 1;
+
+        $registro = OrdenCompra::create([
+            'id_tb_egreso_requisicion' => $requisicion->id_tb_egreso_requisicion,
+            'proveedor_id' => null,
+            'sin_factura' => true, // sin proveedor: se paga al beneficiario de la requisición (el trabajador)
+            'tramite_servicio_id' => $tramite->id,
+            'folio' => $folio,
+            'año' => $año,
+            'folio_completo' => sprintf('FR-%d-%04d', $año, $folio),
+            'fecha' => now('America/Mexico_City')->toDateString(),
+            'importe' => round((float) $requisicion->total, 2),
+            'observaciones' => "Fondo revolvente {$tramite->folio_completo}: {$facturas->count()} factura(s).",
+            'user_id' => $user->id,
+            'xml_total' => round($facturas->sum('total'), 2),
+            'xml_isr' => round($facturas->sum('isr'), 2),
+            'xml_cargado_at' => now(),
+            'xml_user_id' => $user->id,
+        ]);
+
+        $this->bitacora($requisicion, EgresoRequisicion::CON_FACTURA,
+            "Fondo revolvente {$tramite->folio_completo}: {$facturas->count()} factura(s) por $".number_format($registro->importe, 2)." a favor de {$tramite->beneficiarioFondo()}.");
+
+        return $registro;
     }
 
     private function orden(TramiteServicio $tramite, EgresoRequisicion $requisicion, $facturas, $proveedor, User $user): OrdenCompra

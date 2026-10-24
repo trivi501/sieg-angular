@@ -77,6 +77,13 @@ export const NavigationItems: NavigationItem[] = [
             permission: 'servicios-index'
           },
           {
+            id: 'fondos',
+            title: 'Fondos revolventes',
+            type: 'item',
+            url: '/fondos',
+            permission: 'fondos-index'
+          },
+          {
             id: 'calendario-captura',
             title: 'Calendario de captura',
             type: 'item',

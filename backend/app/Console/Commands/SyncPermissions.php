@@ -42,6 +42,8 @@ class SyncPermissions extends Command
             'requisiciones-cancelar', // cancela cualquier requisición antes de la orden de compra
             // Trámites de servicios: el área sube las facturas; Recursos Materiales valida y se generan requisición, orden y CLC.
             'servicios-index', 'servicios-create', 'servicios-validar',
+            // Fondos revolventes: cada área sube los suyos; validar se asigna desde Roles.
+            'fondos-index', 'fondos-create', 'fondos-validar',
 
             // Órdenes de compra (Recursos Materiales)
             'ordenes-compra-create', 'ordenes-compra-pagar', 'ordenes-compra-fecha',

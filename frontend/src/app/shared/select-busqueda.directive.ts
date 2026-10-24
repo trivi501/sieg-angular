@@ -7,7 +7,14 @@ import TomSelect from 'tom-select';
  * opciones las maneja Angular (ngValue). Aquí solo se fija el valor del select y se avisa del cambio.
  */
 class TomSelectAngular extends TomSelect {
+  /**
+   * Mientras se copian las opciones del <select> a Tom Select no se escribe en el <select>: el valor lo pone
+   * Angular, y escribirlo aquí lo borraría si las opciones y el valor cambian en el mismo ciclo.
+   */
+  soloLeer = false;
+
   override updateOriginalInput(opts: { silent?: boolean } = {}): void {
+    if (this.soloLeer) return;
     const select = this.input as HTMLSelectElement;
     const valor = String(this.getValue() ?? '');
     if (select.value !== valor) {
@@ -31,7 +38,7 @@ export class SelectBusquedaDirective implements AfterViewInit {
   private el = inject<ElementRef<HTMLSelectElement>>(ElementRef).nativeElement;
   private control = inject(NgControl, { optional: true, self: true });
   private destroyRef = inject(DestroyRef);
-  private ts?: TomSelect;
+  private ts?: TomSelectAngular;
 
   ngAfterViewInit(): void {
     this.ts = new TomSelectAngular(this.el, {
@@ -73,19 +80,32 @@ export class SelectBusquedaDirective implements AfterViewInit {
     // Tom Select también escribe en el <select>: sin pausar el observador se volvería a disparar sin fin.
     this.observador?.disconnect();
     this.ajustarHabilitado();
-    const valor = this.el.value;
-    if (opciones) {
-      // Se copian a mano: ts.sync() descarta la opción de valor vacío ("Todos", "Seleccionar…").
-      ts.clear(true);
-      ts.clearOptions();
-      ts.addOptions([...this.el.options].map((o, i) => ({ value: o.value, text: o.text, disabled: o.disabled, $order: i + 1 })));
-      ts.refreshOptions(false);
-      ts.setValue(valor, true); // también vuelve a pintar el texto si la opción elegida cambió de nombre
-    } else if (ts.getValue() !== valor) {
-      ts.setValue(valor, true);
+    // Se copia a Tom Select lo que tiene el <select> (opciones y valor), sin escribir en él.
+    ts.soloLeer = true;
+    try {
+      if (opciones) {
+        // Se copian a mano: ts.sync() descarta la opción de valor vacío ("Todos", "Seleccionar…").
+        ts.clear(true);
+        ts.clearOptions();
+        ts.addOptions([...this.el.options].map((o, i) => ({ value: o.value, text: o.text, disabled: o.disabled, $order: i + 1 })));
+        ts.refreshOptions(false);
+      }
+      if (opciones || ts.getValue() !== this.el.value) {
+        ts.setValue(this.el.value, true); // también vuelve a pintar el texto si la opción elegida cambió de nombre
+      }
+    } finally {
+      ts.soloLeer = false;
     }
     this.observador?.takeRecords();
     this.observar();
+    // Angular puede fijar el valor justo después (cuando sus opciones llegan en el mismo ciclo): se revisa otra vez.
+    setTimeout(() => {
+      if (this.ts && this.ts.getValue() !== this.el.value) {
+        this.ts.soloLeer = true;
+        this.ts.setValue(this.el.value, true);
+        this.ts.soloLeer = false;
+      }
+    });
   }
 
   private ajustarHabilitado(): void {

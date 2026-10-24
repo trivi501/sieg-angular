@@ -4,6 +4,10 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { environment } from 'src/environments/environment';
 import { Paginado } from 'src/app/core/api';
 
+/** servicio (/servicios, TS-…) o fondo revolvente (/fondos, FR-…). */
+export type TipoTramite = 'servicio' | 'fondo';
+export const RUTA_TIPO: Record<TipoTramite, string> = { servicio: 'servicios', fondo: 'fondos' };
+
 export type EstadoTramite = 'captura' | 'por_validar' | 'rechazado' | 'validado' | 'cancelado';
 
 export interface FilaTramite {
@@ -27,6 +31,13 @@ export interface ListaTramites extends Paginado<FilaTramite> {
 }
 
 export interface ConceptoFactura {
+  /** Fondo revolvente: cada artículo con su partida / proyecto / fuente. */
+  partida?: string | null;
+  proyecto?: string | null;
+  fuente?: string | null;
+  nombre_partida?: string | null;
+  iva?: number;
+  isr?: number;
   cantidad: number | null;
   unidad: string | null;
   clave: string | null;
@@ -50,6 +61,8 @@ export interface FacturaTramite {
   total: number;
   importe: number;
   conceptos: ConceptoFactura[];
+  /** Fondo: montos de la factura por partida (lo de sus artículos). */
+  por_partida: { fuente: string; proyecto: string; partida: string; nombre_partida: string | null; base: number; iva: number; isr: number; importe: number }[];
   sat_estado: string | null;
   fuente: string | null;
   proyecto: string | null;
@@ -72,6 +85,7 @@ export interface LineaTramite {
 export interface DetalleTramite {
   tramite: {
     id: number;
+    tipo: TipoTramite;
     folio: string;
     fecha: string | null;
     id_unidad: number;
@@ -89,6 +103,10 @@ export interface DetalleTramite {
     proveedor_nombre: string | null;
     proveedor: { id: number; nombre: string; activo: boolean } | null;
     impedimento_proveedor: string | null;
+    trabajador_nombre: string | null;
+    trabajador_numero: string | null;
+    trabajador_puesto: string | null;
+    limite_factura: number | null;
     importe: number;
     neto: number;
     isr: number;
@@ -111,48 +129,49 @@ interface Mensaje {
 @Injectable({ providedIn: 'root' })
 export class ServiciosService {
   private http = inject(HttpClient);
-  private api = `${environment.apiUrl}/servicios`;
+  private api = (tipo: TipoTramite) => `${environment.apiUrl}/${RUTA_TIPO[tipo]}`;
 
-  lista(filtros: Record<string, string | number>) {
+  lista(tipo: TipoTramite, filtros: Record<string, string | number>) {
     let params = new HttpParams();
     for (const [k, v] of Object.entries(filtros)) {
       if (v !== '' && v !== null && v !== undefined) params = params.set(k, v);
     }
-    return this.http.get<ListaTramites>(this.api, { params });
+    return this.http.get<ListaTramites>(this.api(tipo), { params });
   }
 
-  crear(datos: { id_cat_egreso_unidad_administrativa: number | null; concepto: string }) {
-    return this.http.post<Mensaje>(this.api, datos);
+  crear(tipo: TipoTramite, datos: { id_cat_egreso_unidad_administrativa: number | null; concepto: string; trabajador_nombre?: string; trabajador_numero?: string; trabajador_puesto?: string }) {
+    return this.http.post<Mensaje>(this.api(tipo), datos);
   }
 
-  detalle(id: number) {
-    return this.http.get<DetalleTramite>(`${this.api}/${id}`);
+  detalle(tipo: TipoTramite, id: number) {
+    return this.http.get<DetalleTramite>(`${this.api(tipo)}/${id}`);
   }
 
-  actualizar(id: number, concepto: string) {
-    return this.http.put<Mensaje>(`${this.api}/${id}`, { concepto });
+  actualizar(tipo: TipoTramite, id: number, datos: { concepto: string; trabajador_nombre?: string | null; trabajador_numero?: string | null; trabajador_puesto?: string | null }) {
+    return this.http.put<Mensaje>(`${this.api(tipo)}/${id}`, datos);
   }
 
-  subirFactura(id: number, archivo: File) {
+  subirFactura(tipo: TipoTramite, id: number, archivo: File) {
     const datos = new FormData();
     datos.append('xml', archivo);
-    return this.http.post<Mensaje>(`${this.api}/${id}/facturas`, datos);
+    return this.http.post<Mensaje>(`${this.api(tipo)}/${id}/facturas`, datos);
   }
 
-  clasificar(id: number, factura: number, datos: { fuente: string | null; proyecto: string | null; partida: string | null; concepto: string | null }) {
-    return this.http.put<Mensaje>(`${this.api}/${id}/facturas/${factura}`, datos);
+  /** Servicio: partida de la factura. Fondo: articulos[i] con la partida de cada artículo. */
+  clasificar(tipo: TipoTramite, id: number, factura: number, datos: object) {
+    return this.http.put<Mensaje>(`${this.api(tipo)}/${id}/facturas/${factura}`, datos);
   }
 
-  quitarFactura(id: number, factura: number) {
-    return this.http.delete<Mensaje>(`${this.api}/${id}/facturas/${factura}`);
+  quitarFactura(tipo: TipoTramite, id: number, factura: number) {
+    return this.http.delete<Mensaje>(`${this.api(tipo)}/${id}/facturas/${factura}`);
   }
 
-  descargarXml(id: number, factura: number) {
-    return this.http.get(`${this.api}/${id}/facturas/${factura}/xml`, { responseType: 'blob' });
+  descargarXml(tipo: TipoTramite, id: number, factura: number) {
+    return this.http.get(`${this.api(tipo)}/${id}/facturas/${factura}/xml`, { responseType: 'blob' });
   }
 
-  accion(id: number, accion: 'enviar' | 'validar' | 'rechazar' | 'cancelar', datos: object = {}) {
-    return this.http.post<Mensaje>(`${this.api}/${id}/${accion}`, datos);
+  accion(tipo: TipoTramite, id: number, accion: 'enviar' | 'validar' | 'rechazar' | 'cancelar', datos: object = {}) {
+    return this.http.post<Mensaje>(`${this.api(tipo)}/${id}/${accion}`, datos);
   }
 }
 

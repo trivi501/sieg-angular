@@ -141,21 +141,24 @@ Route::middleware('auth:sanctum')->group(function () {
     // Facturas (CFDI) cargadas a las órdenes de compra.
     Route::get('facturas', [FacturaController::class, 'index'])->middleware('permission:facturas-index');
 
-    // Trámites de servicios: el área sube las facturas; Recursos Materiales valida y se generan requisición, orden y CLC.
-    Route::get('servicios', [TramiteServicioController::class, 'index'])->middleware('permission:servicios-index');
-    Route::post('servicios', [TramiteServicioController::class, 'store'])->middleware('permission:servicios-create');
-    Route::whereNumber(['tramite', 'factura'])->group(function () {
-        Route::get('servicios/{tramite}', [TramiteServicioController::class, 'show'])->middleware('permission:servicios-index');
-        Route::put('servicios/{tramite}', [TramiteServicioController::class, 'update'])->middleware('permission:servicios-create');
-        Route::post('servicios/{tramite}/facturas', [TramiteServicioController::class, 'subirFactura'])->middleware('permission:servicios-create');
-        Route::put('servicios/{tramite}/facturas/{factura}', [TramiteServicioController::class, 'clasificarFactura'])->middleware('permission:servicios-create');
-        Route::delete('servicios/{tramite}/facturas/{factura}', [TramiteServicioController::class, 'quitarFactura'])->middleware('permission:servicios-create');
-        Route::get('servicios/{tramite}/facturas/{factura}/xml', [TramiteServicioController::class, 'descargarXml'])->middleware('permission:servicios-index');
-        Route::post('servicios/{tramite}/enviar', [TramiteServicioController::class, 'enviar'])->middleware('permission:servicios-create');
-        Route::post('servicios/{tramite}/validar', [TramiteServicioController::class, 'validar'])->middleware('permission:servicios-validar');
-        Route::post('servicios/{tramite}/rechazar', [TramiteServicioController::class, 'rechazar'])->middleware('permission:servicios-validar');
-        Route::post('servicios/{tramite}/cancelar', [TramiteServicioController::class, 'cancelar'])->middleware('permission:servicios-create|servicios-validar');
-    });
+    // Facturas primero: trámites de servicios (/servicios, permisos servicios-*) y fondos revolventes (/fondos,
+    // permisos fondos-*). Mismo controlador; el tipo sale de la ruta.
+    foreach (['servicios' => 'servicio', 'fondos' => 'fondo'] as $prefijo => $tipo) {
+        Route::prefix($prefijo)->whereNumber(['tramite', 'factura'])->group(function () use ($prefijo, $tipo) {
+            Route::get('', [TramiteServicioController::class, 'index'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-index");
+            Route::post('', [TramiteServicioController::class, 'store'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-create");
+            Route::get('{tramite}', [TramiteServicioController::class, 'show'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-index");
+            Route::put('{tramite}', [TramiteServicioController::class, 'update'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-create");
+            Route::post('{tramite}/facturas', [TramiteServicioController::class, 'subirFactura'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-create");
+            Route::put('{tramite}/facturas/{factura}', [TramiteServicioController::class, 'clasificarFactura'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-create");
+            Route::delete('{tramite}/facturas/{factura}', [TramiteServicioController::class, 'quitarFactura'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-create");
+            Route::get('{tramite}/facturas/{factura}/xml', [TramiteServicioController::class, 'descargarXml'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-index");
+            Route::post('{tramite}/enviar', [TramiteServicioController::class, 'enviar'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-create");
+            Route::post('{tramite}/validar', [TramiteServicioController::class, 'validar'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-validar");
+            Route::post('{tramite}/rechazar', [TramiteServicioController::class, 'rechazar'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-validar");
+            Route::post('{tramite}/cancelar', [TramiteServicioController::class, 'cancelar'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-create|{$prefijo}-validar");
+        });
+    }
 
     // Trámite de CLC entre áreas (cada acción revisa su propio permiso en App\Services\TramiteClc).
     Route::get('clc', [ClcController::class, 'index'])->middleware('permission:clc-index');

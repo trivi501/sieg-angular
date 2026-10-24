@@ -66,12 +66,23 @@ const routes: Routes = [
       // Trámites de servicios: facturas primero; al validarse se generan requisición, orden de compra y CLC.
       {
         path: 'servicios',
-        data: { permission: 'servicios-index' },
+        data: { permission: 'servicios-index', tipo: 'servicio' },
         loadComponent: () => import('./pages/servicios/servicios-lista.component').then((c) => c.ServiciosListaComponent)
       },
       {
         path: 'servicios/:id',
-        data: { permission: 'servicios-index' },
+        data: { permission: 'servicios-index', tipo: 'servicio' },
+        loadComponent: () => import('./pages/servicios/servicio-detalle.component').then((c) => c.ServicioDetalleComponent)
+      },
+      // Fondos revolventes: mismas pantallas que servicios (data.tipo = fondo).
+      {
+        path: 'fondos',
+        data: { permission: 'fondos-index', tipo: 'fondo' },
+        loadComponent: () => import('./pages/servicios/servicios-lista.component').then((c) => c.ServiciosListaComponent)
+      },
+      {
+        path: 'fondos/:id',
+        data: { permission: 'fondos-index', tipo: 'fondo' },
         loadComponent: () => import('./pages/servicios/servicio-detalle.component').then((c) => c.ServicioDetalleComponent)
       },
       // Almacén conforme a la orden de compra.

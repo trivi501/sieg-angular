@@ -180,7 +180,8 @@ class RequisicionController extends Controller
         $conPrecios = $requisicion->tbEgresoRequisicionDetalles->isNotEmpty()
             && $requisicion->tbEgresoRequisicionDetalles->every(fn ($d) => (float) $d->precio_unitario > 0);
         $directoASuficiencia = $sf || ($conPrecios && $m !== null);
-        $compra = $sf ? null : $requisicion->ordenCompra;
+        // Registro sin proveedor (apoyo sin factura AP-… o fondo revolvente FR-…): solo lleva la CLC, no es una compra.
+        $compra = $sf || $requisicion->ordenCompra?->sin_factura ? null : $requisicion->ordenCompra;
 
         return response()->json([
             'requisicion' => [
@@ -245,7 +246,7 @@ class RequisicionController extends Controller
                 'proveedor' => $oc->aFavorDe(),
                 'rfc' => $oc->proveedor?->rfc,
                 'sin_factura' => (bool) $oc->sin_factura,
-                'tramite' => $oc->tramite_servicio_id ? ['id' => $oc->tramite_servicio_id, 'folio' => $oc->tramiteServicio?->folio_completo, 'facturas' => $oc->tramiteServicio?->facturas()->count()] : null,
+                'tramite' => $oc->tramite_servicio_id ? ['id' => $oc->tramite_servicio_id, 'tipo' => $oc->tramiteServicio?->tipo, 'folio' => $oc->tramiteServicio?->folio_completo, 'facturas' => $oc->tramiteServicio?->facturas()->count()] : null,
                 'factura' => $oc->xml_uuid ? (trim(($oc->xml_serie ?? '').' '.($oc->xml_folio ?? '')) ?: $oc->xml_uuid) : null,
                 'xml' => $oc->xml_uuid ? [
                     'uuid' => $oc->xml_uuid,

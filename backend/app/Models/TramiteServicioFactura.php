@@ -59,8 +59,38 @@ class TramiteServicioFactura extends Model
         return trim(($this->serie ?? '').' '.($this->folio ?? '')) ?: null;
     }
 
-    public function clasificada(): bool
+    public function clasificada(bool $porArticulo = false): bool
     {
+        if ($porArticulo) {
+            // Fondo revolvente: cada artículo con su partida, proyecto y fuente.
+            $articulos = $this->conceptos ?? [];
+
+            return filled($this->concepto) && $articulos !== []
+                && collect($articulos)->every(fn ($a) => filled($a['partida'] ?? null) && filled($a['proyecto'] ?? null) && filled($a['fuente'] ?? null));
+        }
+
         return filled($this->partida) && filled($this->proyecto) && filled($this->fuente) && filled($this->concepto);
+    }
+
+    /**
+     * Fondo revolvente: los montos de la factura por partida / proyecto / fuente, sumando sus artículos. Una
+     * factura con dos partidas da dos renglones, cada uno solo con lo de sus artículos.
+     *
+     * @return array<int, array{fuente: string, proyecto: string, partida: string, base: float, iva: float, isr: float, importe: float}>
+     */
+    public function porPartida(): array
+    {
+        $grupos = [];
+        foreach ($this->conceptos ?? [] as $a) {
+            $clave = ($a['fuente'] ?? '').'|'.($a['proyecto'] ?? '').'|'.($a['partida'] ?? '');
+            $base = round((float) ($a['importe'] ?? 0) - (float) ($a['descuento'] ?? 0), 2);
+            $grupos[$clave] ??= ['fuente' => $a['fuente'] ?? '', 'proyecto' => $a['proyecto'] ?? '', 'partida' => $a['partida'] ?? '', 'base' => 0.0, 'iva' => 0.0, 'isr' => 0.0];
+            $grupos[$clave]['base'] += $base;
+            $grupos[$clave]['iva'] += (float) ($a['iva'] ?? 0);
+            $grupos[$clave]['isr'] += (float) ($a['isr'] ?? 0);
+        }
+
+        return array_values(array_map(fn ($g) => [...$g, 'base' => round($g['base'], 2), 'iva' => round($g['iva'], 2), 'isr' => round($g['isr'], 2),
+            'importe' => round($g['base'] + $g['iva'], 2)], $grupos));
     }
 }

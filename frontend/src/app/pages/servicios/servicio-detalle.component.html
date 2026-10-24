@@ -4,9 +4,9 @@
   @let t = d.tramite;
   <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
     <div>
-      <a routerLink="/servicios" class="small text-muted">← Trámites de servicios</a>
+      <a [routerLink]="base" class="small text-muted">← {{ fondo ? 'Fondos revolventes' : 'Trámites de servicios' }}</a>
       <h4 class="mb-1">
-        Trámite {{ t.folio }}
+        {{ fondo ? 'Fondo revolvente' : 'Trámite' }} {{ t.folio }}
         <span class="badge {{ clase(t.estado) }} align-middle">{{ t.estado_texto }}</span>
       </h4>
       <p class="text-muted small mb-0">{{ t.unidad }} · capturó {{ t.capturo ?? '—' }} · {{ t.fecha | date: 'dd/MM/yyyy' }}</p>
@@ -16,7 +16,7 @@
         <button type="button" class="btn btn-primary" [disabled]="ocupado() || !d.facturas.length" (click)="ejecutar('enviar')" appAccion="Enviar a validar" icono="send"></button>
       }
       @if (d.puede.validar) {
-        <button type="button" class="btn btn-success" [disabled]="ocupado()" (click)="ejecutar('validar')" appAccion="Validar (genera requisición, orden de compra y CLC)" icono="check"></button>
+        <button type="button" class="btn btn-success" [disabled]="ocupado()" (click)="ejecutar('validar')" [appAccion]="fondo ? 'Validar (genera requisición y CLC)' : 'Validar (genera requisición, orden de compra y CLC)'" icono="check"></button>
         <button type="button" class="btn btn-outline-danger" (click)="modo.set('rechazar')" appAccion="No validar (con observaciones)" icono="close"></button>
       }
       @if (d.puede.cancelar) {
@@ -58,8 +58,8 @@
     </div>
   }
 
-  <!-- Proveedor: se vincula por el RFC de las facturas -->
-  @if (t.proveedor_rfc) {
+  <!-- Proveedor (servicio): se vincula por el RFC de las facturas -->
+  @if (!fondo && t.proveedor_rfc) {
     @if (t.impedimento_proveedor) {
       <div class="alert alert-warning py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
         <span><b>Proveedor {{ t.proveedor_nombre }} ({{ t.proveedor_rfc }}):</b> {{ t.impedimento_proveedor }}</span>
@@ -81,12 +81,35 @@
           @if (d.puede.editar) {
             <div class="d-flex gap-2">
               <input class="form-control form-control-sm" [(ngModel)]="concepto" maxlength="3000" />
-              <button type="button" class="btn btn-sm btn-outline-primary" (click)="guardarConcepto()" appAccion="Guardar concepto" icono="check"></button>
+              <button type="button" class="btn btn-sm btn-outline-primary" (click)="guardarConcepto()" appAccion="Guardar datos" icono="check"></button>
             </div>
           } @else {
             {{ t.concepto }}
           }
         </div>
+        @if (fondo) {
+          <!-- Trabajador a cuyo favor va la CLC (sin banco, cuenta, CLABE ni RFC) -->
+          @if (d.puede.editar) {
+            <div class="col-md-5">
+              <span class="text-muted d-block">Trabajador (a su favor va la CLC)</span>
+              <input class="form-control form-control-sm" maxlength="300" placeholder="Nombre completo" [(ngModel)]="trabajador.nombre" (change)="guardarConcepto()" />
+            </div>
+            <div class="col-6 col-md-2">
+              <span class="text-muted d-block">No. de empleado</span>
+              <input class="form-control form-control-sm" maxlength="30" [(ngModel)]="trabajador.numero" (change)="guardarConcepto()" />
+            </div>
+            <div class="col-6 col-md-5">
+              <span class="text-muted d-block">Puesto</span>
+              <input class="form-control form-control-sm" maxlength="200" [(ngModel)]="trabajador.puesto" (change)="guardarConcepto()" />
+            </div>
+          } @else {
+            <div class="col-md-12">
+              <span class="text-muted d-block">Trabajador (a su favor va la CLC)</span>
+              <b>{{ t.trabajador_nombre ?? '—' }}</b>
+              {{ t.trabajador_numero ? '· No. empleado ' + t.trabajador_numero : '' }} {{ t.trabajador_puesto ? '· ' + t.trabajador_puesto : '' }}
+            </div>
+          }
+        }
         <div class="col-6 col-md-2"><span class="text-muted d-block">Importe</span><b class="font-monospace">{{ money(t.importe) }}</b></div>
         <div class="col-6 col-md-2">
           <span class="text-muted d-block">A pagar (− ISR)</span><b class="font-monospace">{{ money(t.neto) }}</b>
@@ -104,14 +127,16 @@
       <div class="card-body d-flex flex-wrap align-items-center gap-3">
         <span class="small">
           <b>Validado</b> por {{ t.validado_por }} el {{ t.validado_at | date: 'dd/MM/yyyy HH:mm' }}. Se generaron la requisición
-          <a [routerLink]="['/requisiciones', t.requisicion_id]">{{ t.requisicion }}</a>, la orden de compra {{ t.orden?.folio }} y la CLC {{ t.orden?.clc }}
+          <a [routerLink]="['/requisiciones', t.requisicion_id]">{{ t.requisicion }}</a>{{ fondo ? '' : ', la orden de compra ' + t.orden?.folio }} y la CLC {{ t.orden?.clc }}
           @if (t.orden?.clc_estado) {
             ({{ t.orden?.clc_estado }})
           }.
         </span>
         <div class="d-flex gap-2 ms-auto">
           <button type="button" class="btn btn-outline-secondary" (click)="imprimirRequisicion()" appAccion="Imprimir requisición (FUR)" icono="printer"></button>
-          <button type="button" class="btn btn-outline-secondary" (click)="imprimirOrden()" appAccion="Imprimir orden de compra" icono="file-pdf"></button>
+          @if (!fondo) {
+            <button type="button" class="btn btn-outline-secondary" (click)="imprimirOrden()" appAccion="Imprimir orden de compra" icono="file-pdf"></button>
+          }
           <button type="button" class="btn btn-outline-secondary" (click)="imprimirClc()" appAccion="Imprimir CLC" icono="file-done"></button>
         </div>
       </div>
@@ -130,8 +155,13 @@
   </div>
   @if (d.puede.editar) {
     <p class="small text-muted">
-      Facturas de ingreso a nombre del Ayuntamiento, vigentes en el SAT y todas del mismo proveedor. Cada factura es un renglón de la requisición y de la CLC
-      (aunque sean de la misma partida): asígnale partida, proyecto, fuente y concepto.
+      @if (fondo) {
+        Facturas de ingreso a nombre del Ayuntamiento, vigentes en el SAT, de cualquier proveedor (registrado o no) y de <b>hasta {{ money(t.limite_factura ?? 2000) }}</b>
+        cada una. Asigna la partida de <b>cada artículo</b>: si una factura tiene artículos de dos partidas, en la CLC sale un renglón por partida con solo su monto.
+      } @else {
+        Facturas de ingreso a nombre del Ayuntamiento, vigentes en el SAT y todas del mismo proveedor. Cada factura es un renglón de la requisición y de la CLC
+        (aunque sean de la misma partida): asígnale partida, proyecto, fuente y concepto.
+      }
     </p>
   }
 
@@ -143,7 +173,7 @@
             <b>{{ f.serie_folio ?? 'Sin folio' }}</b>
             <span class="badge ms-1" [class.bg-light-success]="f.sat_estado === 'Vigente'" [class.text-success]="f.sat_estado === 'Vigente'" [class.bg-light-danger]="f.sat_estado !== 'Vigente'" [class.text-danger]="f.sat_estado !== 'Vigente'">SAT: {{ f.sat_estado ?? '—' }}</span>
             <span class="d-block uuid text-muted">{{ f.uuid }}</span>
-            <span class="d-block text-muted">{{ f.fecha | date: 'dd/MM/yyyy' }} · {{ f.emisor }}</span>
+            <span class="d-block" [class.text-muted]="!fondo" [class.fw-semibold]="fondo">{{ f.fecha | date: 'dd/MM/yyyy' }} · {{ f.emisor }} {{ fondo ? '(' + f.rfc_emisor + ')' : '' }}</span>
           </div>
           <div class="col-6 col-md-2 text-end font-monospace">
             <span class="text-muted d-block">Subtotal</span>{{ money(f.subtotal - f.descuento) }}
@@ -153,7 +183,9 @@
           </div>
           <div class="col-6 col-md-2 text-end font-monospace"><span class="text-muted d-block">Total</span><b>{{ money(f.total) }}</b></div>
           <div class="col-6 col-md-2 text-end">
-            <button type="button" class="btn btn-sm btn-outline-secondary" (click)="alternar(f.id)" [appAccion]="abiertas().has(f.id) ? 'Ocultar contenido' : 'Ver contenido de la factura'" icono="eye"></button>
+            @if (!fondo) {
+              <button type="button" class="btn btn-sm btn-outline-secondary" (click)="alternar(f.id)" [appAccion]="abiertas().has(f.id) ? 'Ocultar contenido' : 'Ver contenido de la factura'" icono="eye"></button>
+            }
             <button type="button" class="btn btn-sm btn-outline-secondary" (click)="xml(f)" appAccion="Descargar XML" icono="download"></button>
             @if (d.puede.editar) {
               <button type="button" class="btn btn-sm btn-outline-danger" (click)="quitar(f)" appAccion="Quitar factura" icono="delete"></button>
@@ -161,8 +193,91 @@
           </div>
         </div>
 
-        <!-- Contenido: artículos y montos -->
-        @if (abiertas().has(f.id)) {
+        <!-- Contenido: artículos y montos (en un fondo, siempre, con la partida de cada artículo) -->
+        @if (fondo) {
+          <div class="table-responsive mt-2">
+            <table class="table table-sm align-middle mb-0">
+              <thead>
+                <tr>
+                  <th class="text-end">Cant.</th>
+                  <th>Artículo</th>
+                  <th class="text-end">Importe</th>
+                  <th class="text-end">IVA</th>
+                  <th style="min-width: 190px">Partida</th>
+                  <th style="min-width: 150px">Proyecto</th>
+                  <th style="min-width: 130px">Fuente</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (c of f.conceptos; track $index; let i = $index) {
+                  <tr>
+                    <td class="text-end">{{ c.cantidad }}</td>
+                    <td>{{ c.descripcion }}</td>
+                    <td class="text-end font-monospace">{{ money(c.importe - c.descuento) }}</td>
+                    <td class="text-end font-monospace">{{ money(c.iva ?? 0) }}</td>
+                    @if (d.puede.editar) {
+                      <td>
+                        <select class="form-select form-select-sm" [ngModel]="articulos[f.id][i].partida" (ngModelChange)="cambiarArticulo(f, i, 'partida', $event)">
+                          <option value="">Partida…</option>
+                          @for (p of partidas(); track p.clave) {
+                            <option [value]="p.clave">{{ p.clave }} — {{ p.nombre }}</option>
+                          }
+                        </select>
+                      </td>
+                      <td>
+                        <select class="form-select form-select-sm" [disabled]="!articulos[f.id][i].partida" [ngModel]="articulos[f.id][i].proyecto" (ngModelChange)="cambiarArticulo(f, i, 'proyecto', $event)">
+                          <option value="">Proyecto…</option>
+                          @for (p of proyectosDe(articulos[f.id][i].partida); track p.clave) {
+                            <option [value]="p.clave">{{ p.clave }} — {{ p.nombre }}</option>
+                          }
+                        </select>
+                      </td>
+                      <td>
+                        <select class="form-select form-select-sm" [disabled]="!articulos[f.id][i].proyecto" [ngModel]="articulos[f.id][i].fuente" (ngModelChange)="cambiarArticulo(f, i, 'fuente', $event)">
+                          <option value="">Fuente…</option>
+                          @for (p of fuentesDe(articulos[f.id][i].partida, articulos[f.id][i].proyecto); track p.clave) {
+                            <option [value]="p.clave">{{ p.clave }} — {{ p.nombre }}</option>
+                          }
+                        </select>
+                      </td>
+                    } @else {
+                      <td>{{ c.partida ?? '—' }} {{ c.nombre_partida ? '— ' + c.nombre_partida : '' }}</td>
+                      <td>{{ c.proyecto ?? '—' }}</td>
+                      <td>{{ c.fuente ?? '—' }}</td>
+                    }
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+          @if (f.por_partida.length && f.clasificada) {
+            <div class="small text-muted mt-1">
+              En la CLC:
+              @for (p of f.por_partida; track p.partida + p.proyecto + p.fuente) {
+                <span class="badge bg-light-primary text-primary me-1">{{ p.partida }}: {{ money(p.importe) }}</span>
+              }
+            </div>
+          }
+          @if (d.puede.editar) {
+            <div class="row g-2 mt-1 align-items-end">
+              <div class="col-md-8">
+                <label class="form-label small mb-0">Concepto de la factura</label>
+                <input class="form-control form-control-sm" maxlength="3000" [(ngModel)]="clasif[f.id].concepto" />
+              </div>
+              <div class="col-md-2">
+                @if (f.conceptos.length > 1) {
+                  <button type="button" class="btn btn-sm btn-outline-secondary w-100" (click)="igualATodos(f)" title="Copia la partida del primer artículo a todos">Igual a todos</button>
+                }
+              </div>
+              <div class="col-md-2">
+                <button type="button" class="btn btn-sm btn-primary w-100" (click)="guardarClasificacion(f)" appAccion="Guardar clasificación" icono="check"></button>
+              </div>
+              @if (erroresFactura()[f.id]) {
+                <div class="col-12 text-danger small">{{ erroresFactura()[f.id] }}</div>
+              }
+            </div>
+          }
+        } @else if (abiertas().has(f.id)) {
           <div class="table-responsive mt-2">
             <table class="table table-sm mb-0">
               <thead>
@@ -191,8 +306,9 @@
           </div>
         }
 
-        <!-- Clasificación: partida / proyecto / fuente / concepto -->
-        @if (d.puede.editar) {
+        <!-- Clasificación (servicio): partida / proyecto / fuente / concepto de toda la factura -->
+        @if (fondo) {
+        } @else if (d.puede.editar) {
           <div class="row g-2 mt-1 align-items-end">
             <div class="col-md-3">
               <label class="form-label small mb-0">Partida</label>

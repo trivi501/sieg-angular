@@ -22,12 +22,22 @@ class TramiteServicio extends Model
         'cancelado' => 'Cancelado',
     ];
 
+    /** Tipos: trámite de servicios (un proveedor, con orden de compra) o fondo revolvente (varios proveedores, a favor de un trabajador). */
+    public const TIPOS = [
+        'servicio' => ['prefijo' => 'TS', 'permiso' => 'servicios', 'nombre' => 'Trámite de servicios'],
+        'fondo' => ['prefijo' => 'FR', 'permiso' => 'fondos', 'nombre' => 'Fondo revolvente'],
+    ];
+
+    /** Monto máximo de cada factura de un fondo revolvente (Total del CFDI). */
+    public const LIMITE_FACTURA_FONDO = 2000.00;
+
     /** Estados en los que el área todavía puede subir, quitar o clasificar facturas. */
     public const EDITABLES = ['captura', 'rechazado'];
 
     protected $table = 'tramites_servicio';
 
     protected $fillable = [
+        'tipo', 'trabajador_nombre', 'trabajador_numero', 'trabajador_puesto',
         'folio', 'año', 'folio_completo', 'id_cat_egreso_unidad_administrativa', 'concepto', 'proveedor_rfc', 'proveedor_nombre',
         'estado', 'observaciones', 'user_id', 'enviado_at', 'validado_at', 'validado_user_id', 'id_tb_egreso_requisicion',
     ];
@@ -78,7 +88,7 @@ class TramiteServicio extends Model
     /** Por qué todavía no se puede avanzar con este proveedor; null si está registrado y vigente. */
     public function impedimentoProveedor(): ?string
     {
-        if (! $this->proveedor_rfc) {
+        if ($this->esFondo() || ! $this->proveedor_rfc) {
             return null;
         }
         $proveedor = $this->proveedor();
@@ -90,6 +100,27 @@ class TramiteServicio extends Model
         }
 
         return $proveedor->impedimentoParaOrden();
+    }
+
+    public function esFondo(): bool
+    {
+        return $this->tipo === 'fondo';
+    }
+
+    /** Prefijo de los permisos del tipo: servicios-* o fondos-*. */
+    public function permiso(string $accion): string
+    {
+        return self::TIPOS[$this->tipo]['permiso'].'-'.$accion;
+    }
+
+    /** A favor de quién va la CLC del fondo: el trabajador, con su número de empleado. */
+    public function beneficiarioFondo(): ?string
+    {
+        if (! $this->trabajador_nombre) {
+            return null;
+        }
+
+        return mb_strtoupper(trim($this->trabajador_nombre)).($this->trabajador_numero ? ' (NO. EMPLEADO '.trim($this->trabajador_numero).')' : '');
     }
 
     public function editable(): bool
