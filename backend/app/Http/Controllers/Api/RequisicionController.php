@@ -245,6 +245,7 @@ class RequisicionController extends Controller
                 'proveedor' => $oc->aFavorDe(),
                 'rfc' => $oc->proveedor?->rfc,
                 'sin_factura' => (bool) $oc->sin_factura,
+                'tramite' => $oc->tramite_servicio_id ? ['id' => $oc->tramite_servicio_id, 'folio' => $oc->tramiteServicio?->folio_completo, 'facturas' => $oc->tramiteServicio?->facturas()->count()] : null,
                 'factura' => $oc->xml_uuid ? (trim(($oc->xml_serie ?? '').' '.($oc->xml_folio ?? '')) ?: $oc->xml_uuid) : null,
                 'xml' => $oc->xml_uuid ? [
                     'uuid' => $oc->xml_uuid,
@@ -315,9 +316,10 @@ class RequisicionController extends Controller
                 // Orden de compra (SIEG: Show.tsx y OrdenCompraController).
                 'generarOrden' => ! $sf && $estado === EgresoRequisicion::COMPROMETIDA && ! $oc && ($user->can('ordenes-compra-create') || $taller),
                 'imprimirOrden' => $compra && ! $compra->cancelada_at,
-                'cambiarProveedor' => $compra && ! $compra->cancelada_at && ! $compra->xml_uuid && ($user->can('ordenes-compra-create') || $taller),
+                'cambiarProveedor' => $compra && ! $compra->tramite_servicio_id && ! $compra->cancelada_at && ! $compra->xml_uuid && ($user->can('ordenes-compra-create') || $taller),
                 'cambiarFechaOrden' => $compra && ! $compra->cancelada_at && $user->can('ordenes-compra-fecha'),
-                'cargarXml' => $compra && ! $compra->cancelada_at && ! $compra->xml_uuid && ($user->can('ordenes-compra-create') || $taller),
+                // Trámite de servicios: la orden ya trae sus facturas (en el trámite); no se sube XML aparte.
+                'cargarXml' => $compra && ! $compra->tramite_servicio_id && ! $compra->cancelada_at && ! $compra->xml_uuid && ($user->can('ordenes-compra-create') || $taller),
                 'descargarXml' => $oc && $oc->xml_path !== null,
                 'verificarSat' => $oc && $oc->xml_uuid && $user->can('ordenes-compra-verificar-sat'),
                 'refacturar' => $oc && $oc->xml_uuid && ! $oc->cancelada_at && ! ($oc->pago_fecha && ! $oc->clc_cancelada_at) && $user->can('ordenes-compra-refacturar'),

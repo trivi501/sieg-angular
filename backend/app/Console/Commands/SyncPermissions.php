@@ -40,6 +40,8 @@ class SyncPermissions extends Command
             'requisiciones-cotizar', // Recursos Materiales: recibe la requisición, inicia y edita la cotización
             'requisiciones-devolver', // Recursos Materiales regresa la requisición al área (p. ej. sin stock) para que la modifique
             'requisiciones-cancelar', // cancela cualquier requisición antes de la orden de compra
+            // Trámites de servicios: el área sube las facturas; Recursos Materiales valida y se generan requisición, orden y CLC.
+            'servicios-index', 'servicios-create', 'servicios-validar',
 
             // Órdenes de compra (Recursos Materiales)
             'ordenes-compra-create', 'ordenes-compra-pagar', 'ordenes-compra-fecha',

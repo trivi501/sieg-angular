@@ -1,0 +1,249 @@
+@if (error()) {
+  <div class="alert alert-danger">{{ error() }}</div>
+} @else if (d(); as d) {
+  @let t = d.tramite;
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+    <div>
+      <a routerLink="/servicios" class="small text-muted">← Trámites de servicios</a>
+      <h4 class="mb-1">
+        Trámite {{ t.folio }}
+        <span class="badge {{ clase(t.estado) }} align-middle">{{ t.estado_texto }}</span>
+      </h4>
+      <p class="text-muted small mb-0">{{ t.unidad }} · capturó {{ t.capturo ?? '—' }} · {{ t.fecha | date: 'dd/MM/yyyy' }}</p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      @if (d.puede.enviar) {
+        <button type="button" class="btn btn-primary" [disabled]="ocupado() || !d.facturas.length" (click)="ejecutar('enviar')" appAccion="Enviar a validar" icono="send"></button>
+      }
+      @if (d.puede.validar) {
+        <button type="button" class="btn btn-success" [disabled]="ocupado()" (click)="ejecutar('validar')" appAccion="Validar (genera requisición, orden de compra y CLC)" icono="check"></button>
+        <button type="button" class="btn btn-outline-danger" (click)="modo.set('rechazar')" appAccion="No validar (con observaciones)" icono="close"></button>
+      }
+      @if (d.puede.cancelar) {
+        <button type="button" class="btn btn-outline-danger" (click)="modo.set('cancelar')" appAccion="Cancelar trámite" icono="stop"></button>
+      }
+    </div>
+  </div>
+
+  @if (aviso(); as a) {
+    <div class="alert alert-{{ a.tipo }} alert-dismissible py-2">
+      {{ a.texto }}
+      <button type="button" class="btn-close" (click)="aviso.set(null)"></button>
+    </div>
+  }
+
+  <!-- Observaciones de Recursos Materiales (no validado) -->
+  @if (t.observaciones && t.estado !== 'validado') {
+    <div class="alert py-2" [class.alert-danger]="t.estado === 'rechazado'" [class.alert-secondary]="t.estado !== 'rechazado'">
+      <b>{{ t.estado === 'rechazado' ? 'No validado. Observaciones de Recursos Materiales:' : 'Observaciones:' }}</b> {{ t.observaciones }}
+    </div>
+  }
+
+  <!-- No validar / cancelar -->
+  @if (modo(); as m) {
+    <div class="card border-danger mb-3">
+      <div class="card-body">
+        @if (m === 'rechazar') {
+          <label class="form-label" for="observaciones">Observaciones para el área (qué debe corregir)</label>
+          <textarea id="observaciones" rows="2" class="form-control mb-2" [(ngModel)]="observaciones"></textarea>
+        } @else {
+          <label class="form-label" for="motivo">Motivo de la cancelación</label>
+          <input id="motivo" class="form-control mb-2" [(ngModel)]="motivo" />
+        }
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-danger" [disabled]="ocupado()" (click)="ejecutar(m)">{{ m === 'rechazar' ? 'No validar' : 'Cancelar trámite' }}</button>
+          <button type="button" class="btn btn-outline-secondary" (click)="modo.set(null)">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- Proveedor: se vincula por el RFC de las facturas -->
+  @if (t.proveedor_rfc) {
+    @if (t.impedimento_proveedor) {
+      <div class="alert alert-warning py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <span><b>Proveedor {{ t.proveedor_nombre }} ({{ t.proveedor_rfc }}):</b> {{ t.impedimento_proveedor }}</span>
+        <button type="button" class="btn btn-sm btn-outline-dark" (click)="cargar()" appAccion="Volver a comprobar" icono="sync"></button>
+      </div>
+    } @else {
+      <div class="alert alert-success py-2 small mb-3">
+        Proveedor registrado y vigente en el padrón: <b>{{ t.proveedor?.nombre }}</b> ({{ t.proveedor_rfc }}).
+      </div>
+    }
+  }
+
+  <!-- Datos generales -->
+  <div class="card">
+    <div class="card-body">
+      <div class="row g-3 small">
+        <div class="col-md-8">
+          <span class="text-muted d-block">Concepto general</span>
+          @if (d.puede.editar) {
+            <div class="d-flex gap-2">
+              <input class="form-control form-control-sm" [(ngModel)]="concepto" maxlength="3000" />
+              <button type="button" class="btn btn-sm btn-outline-primary" (click)="guardarConcepto()" appAccion="Guardar concepto" icono="check"></button>
+            </div>
+          } @else {
+            {{ t.concepto }}
+          }
+        </div>
+        <div class="col-6 col-md-2"><span class="text-muted d-block">Importe</span><b class="font-monospace">{{ money(t.importe) }}</b></div>
+        <div class="col-6 col-md-2">
+          <span class="text-muted d-block">A pagar (− ISR)</span><b class="font-monospace">{{ money(t.neto) }}</b>
+          @if (t.isr > 0) {
+            <small class="d-block text-muted">ISR retenido {{ money(t.isr) }}</small>
+          }
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Documentos generados -->
+  @if (d.puede.documentos) {
+    <div class="card border-success">
+      <div class="card-body d-flex flex-wrap align-items-center gap-3">
+        <span class="small">
+          <b>Validado</b> por {{ t.validado_por }} el {{ t.validado_at | date: 'dd/MM/yyyy HH:mm' }}. Se generaron la requisición
+          <a [routerLink]="['/requisiciones', t.requisicion_id]">{{ t.requisicion }}</a>, la orden de compra {{ t.orden?.folio }} y la CLC {{ t.orden?.clc }}
+          @if (t.orden?.clc_estado) {
+            ({{ t.orden?.clc_estado }})
+          }.
+        </span>
+        <div class="d-flex gap-2 ms-auto">
+          <button type="button" class="btn btn-outline-secondary" (click)="imprimirRequisicion()" appAccion="Imprimir requisición (FUR)" icono="printer"></button>
+          <button type="button" class="btn btn-outline-secondary" (click)="imprimirOrden()" appAccion="Imprimir orden de compra" icono="file-pdf"></button>
+          <button type="button" class="btn btn-outline-secondary" (click)="imprimirClc()" appAccion="Imprimir CLC" icono="file-done"></button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- Facturas -->
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+    <h5 class="mb-0">Facturas ({{ d.facturas.length }})</h5>
+    @if (d.puede.editar) {
+      <label class="btn btn-primary mb-0" [class.disabled]="ocupado()">
+        <input type="file" class="d-none" accept=".xml,text/xml,application/xml" multiple (change)="subir($event)" [disabled]="ocupado()" />
+        {{ ocupado() ? 'Verificando en el SAT…' : 'Subir facturas (XML)' }}
+      </label>
+    }
+  </div>
+  @if (d.puede.editar) {
+    <p class="small text-muted">
+      Facturas de ingreso a nombre del Ayuntamiento, vigentes en el SAT y todas del mismo proveedor. Cada factura es un renglón de la requisición y de la CLC
+      (aunque sean de la misma partida): asígnale partida, proyecto, fuente y concepto.
+    </p>
+  }
+
+  @for (f of d.facturas; track f.id) {
+    <div class="card mb-2" [class.border-warning]="d.puede.editar && !f.clasificada">
+      <div class="card-body py-2">
+        <div class="row g-2 small align-items-center">
+          <div class="col-md-4">
+            <b>{{ f.serie_folio ?? 'Sin folio' }}</b>
+            <span class="badge ms-1" [class.bg-light-success]="f.sat_estado === 'Vigente'" [class.text-success]="f.sat_estado === 'Vigente'" [class.bg-light-danger]="f.sat_estado !== 'Vigente'" [class.text-danger]="f.sat_estado !== 'Vigente'">SAT: {{ f.sat_estado ?? '—' }}</span>
+            <span class="d-block uuid text-muted">{{ f.uuid }}</span>
+            <span class="d-block text-muted">{{ f.fecha | date: 'dd/MM/yyyy' }} · {{ f.emisor }}</span>
+          </div>
+          <div class="col-6 col-md-2 text-end font-monospace">
+            <span class="text-muted d-block">Subtotal</span>{{ money(f.subtotal - f.descuento) }}
+          </div>
+          <div class="col-6 col-md-2 text-end font-monospace">
+            <span class="text-muted d-block">IVA{{ f.isr > 0 ? ' / ISR' : '' }}</span>{{ money(f.iva) }}{{ f.isr > 0 ? ' / ' + money(f.isr) : '' }}
+          </div>
+          <div class="col-6 col-md-2 text-end font-monospace"><span class="text-muted d-block">Total</span><b>{{ money(f.total) }}</b></div>
+          <div class="col-6 col-md-2 text-end">
+            <button type="button" class="btn btn-sm btn-outline-secondary" (click)="alternar(f.id)" [appAccion]="abiertas().has(f.id) ? 'Ocultar contenido' : 'Ver contenido de la factura'" icono="eye"></button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" (click)="xml(f)" appAccion="Descargar XML" icono="download"></button>
+            @if (d.puede.editar) {
+              <button type="button" class="btn btn-sm btn-outline-danger" (click)="quitar(f)" appAccion="Quitar factura" icono="delete"></button>
+            }
+          </div>
+        </div>
+
+        <!-- Contenido: artículos y montos -->
+        @if (abiertas().has(f.id)) {
+          <div class="table-responsive mt-2">
+            <table class="table table-sm mb-0">
+              <thead>
+                <tr>
+                  <th class="text-end">Cantidad</th>
+                  <th>Unidad</th>
+                  <th>Descripción</th>
+                  <th class="text-end">Valor unitario</th>
+                  <th class="text-end">Descuento</th>
+                  <th class="text-end">Importe</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (c of f.conceptos; track $index) {
+                  <tr>
+                    <td class="text-end">{{ c.cantidad }}</td>
+                    <td>{{ c.unidad }}</td>
+                    <td>{{ c.descripcion }}</td>
+                    <td class="text-end font-monospace">{{ money(c.valor_unitario) }}</td>
+                    <td class="text-end font-monospace">{{ c.descuento ? money(c.descuento) : '—' }}</td>
+                    <td class="text-end font-monospace">{{ money(c.importe) }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+
+        <!-- Clasificación: partida / proyecto / fuente / concepto -->
+        @if (d.puede.editar) {
+          <div class="row g-2 mt-1 align-items-end">
+            <div class="col-md-3">
+              <label class="form-label small mb-0">Partida</label>
+              <select class="form-select form-select-sm" [ngModel]="clasif[f.id].partida" (ngModelChange)="cambiarPartida(f, $event)">
+                <option value="">Partida…</option>
+                @for (p of partidas(); track p.clave) {
+                  <option [value]="p.clave">{{ p.clave }} — {{ p.nombre }}</option>
+                }
+              </select>
+            </div>
+            <div class="col-md-2">
+              <label class="form-label small mb-0">Proyecto</label>
+              <select class="form-select form-select-sm" [disabled]="!clasif[f.id].partida" [ngModel]="clasif[f.id].proyecto" (ngModelChange)="cambiarProyecto(f, $event)">
+                <option value="">Proyecto…</option>
+                @for (p of proyectos(f); track p.clave) {
+                  <option [value]="p.clave">{{ p.clave }} — {{ p.nombre }}</option>
+                }
+              </select>
+            </div>
+            <div class="col-md-2">
+              <label class="form-label small mb-0">Fuente</label>
+              <select class="form-select form-select-sm" [disabled]="!clasif[f.id].proyecto" [(ngModel)]="clasif[f.id].fuente">
+                <option value="">Fuente…</option>
+                @for (p of fuentes(f); track p.clave) {
+                  <option [value]="p.clave">{{ p.clave }} — {{ p.nombre }} ({{ money(p.disponible) }})</option>
+                }
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small mb-0">Concepto</label>
+              <input class="form-control form-control-sm" maxlength="3000" [(ngModel)]="clasif[f.id].concepto" />
+            </div>
+            <div class="col-md-1">
+              <button type="button" class="btn btn-sm btn-primary w-100" (click)="guardarClasificacion(f)" appAccion="Guardar clasificación" icono="check"></button>
+            </div>
+            @if (erroresFactura()[f.id]) {
+              <div class="col-12 text-danger small">{{ erroresFactura()[f.id] }}</div>
+            }
+          </div>
+        } @else {
+          <div class="small mt-1">
+            <span class="text-muted">Partida</span> {{ f.partida ?? '—' }} {{ f.nombre_partida ? '— ' + f.nombre_partida : '' }} ·
+            <span class="text-muted">Proyecto</span> {{ f.proyecto ?? '—' }} · <span class="text-muted">Fuente</span> {{ f.fuente ?? '—' }} ·
+            <span class="text-muted">Concepto</span> {{ f.concepto ?? '—' }}
+          </div>
+        }
+      </div>
+    </div>
+  } @empty {
+    <div class="card"><div class="card-body text-center text-muted">Aún no hay facturas. Súbelas con el botón de arriba.</div></div>
+  }
+} @else {
+  <p class="text-muted">Cargando…</p>
+}

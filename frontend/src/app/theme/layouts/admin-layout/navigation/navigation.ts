@@ -70,6 +70,13 @@ export const NavigationItems: NavigationItem[] = [
             permission: 'requisiciones-index'
           },
           {
+            id: 'servicios',
+            title: 'Trámites de servicios',
+            type: 'item',
+            url: '/servicios',
+            permission: 'servicios-index'
+          },
+          {
             id: 'calendario-captura',
             title: 'Calendario de captura',
             type: 'item',

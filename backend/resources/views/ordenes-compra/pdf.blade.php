@@ -63,7 +63,7 @@
             <td style="width: 118px;"><img class="logo" src="{{ public_path('img/logo_guindo.png') }}" alt="Ayuntamiento de Guadalupe"></td>
             <td style="width: 14px;"><div class="separador"></div></td>
             {{-- Provisional mientras no tiene factura (CFDI) --}}
-            <td class="titulo">ORDEN DE<br>COMPRA{{ $orden->xml_uuid ? '' : ' PROVISIONAL' }}</td>
+            <td class="titulo">ORDEN DE<br>COMPRA{{ $orden->xml_uuid || $orden->tramite_servicio_id ? '' : ' PROVISIONAL' }}</td>
             <td class="folio">{{ $orden->folio_completo }}</td>
         </tr>
     </table>

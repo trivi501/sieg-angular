@@ -89,6 +89,24 @@
             return $r;
         });
 
+        // Trámite de servicios: un renglón por factura aunque sean de la misma partida, con su folio fiscal y su ISR.
+        if ($orden->tramite_servicio_id) {
+            $renglones = \App\Models\TramiteServicioFactura::where('tramite_servicio_id', $orden->tramite_servicio_id)->orderBy('id')->get()
+                ->map(fn ($f) => [
+                    'fuente' => $f->fuente,
+                    'proyecto' => $f->proyecto,
+                    'partida' => $f->partida,
+                    'nombre' => \App\Models\PresupuestoEgreso::where('CLAVE', $unidad?->clave)->where('CLAVE3', $f->fuente)
+                        ->where('CLAVE6', $f->proyecto)->where('PARTIDA', $f->partida)->value('NOMBRE_PARTIDA'),
+                    'factura' => $f->uuid,
+                    'fecha_factura' => $f->fecha?->format('d/m/Y'),
+                    'subtotal' => $f->base(),
+                    'iva' => round($f->importe() - $f->base(), 2),
+                    'isr' => $f->isr,
+                    'importe' => $f->importe(),
+                ])->values();
+        }
+
         // Firmas: Solicita = titular de la secretaría; Autoriza = Tesorería (rol "autoriza" de la CLC) y
         // Sindicatura (rol "visto bueno").
         $capturo = $req?->id_user_laravel ? \App\Models\User::with('regidor')->find($req->id_user_laravel) : null;
@@ -189,8 +207,8 @@
                     <td>{{ $r['proyecto'] }}</td>
                     <td>{{ $r['partida'] }}</td>
                     <td>{{ mb_strtoupper($r['nombre'] ?? '') }}</td>
-                    <td style="font-size: 6.2pt; white-space: nowrap;">{{ $orden->sin_factura ? $req?->beneficiario_referencia : $orden->xml_uuid }}</td>
-                    <td>{{ $orden->sin_factura ? $req?->beneficiario_fecha?->format('d/m/Y') : $orden->xml_fecha?->format('d/m/Y') }}</td>
+                    <td style="font-size: 6.2pt; white-space: nowrap;">{{ $r['factura'] ?? ($orden->sin_factura ? $req?->beneficiario_referencia : $orden->xml_uuid) }}</td>
+                    <td>{{ $r['fecha_factura'] ?? ($orden->sin_factura ? $req?->beneficiario_fecha?->format('d/m/Y') : $orden->xml_fecha?->format('d/m/Y')) }}</td>
                     <td class="num">{{ $n($r['subtotal']) }}</td>
                     <td class="num">0.00</td>
                     <td class="num">{{ $n($r['iva']) }}</td>

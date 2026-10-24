@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\PresupuestoController;
 use App\Http\Controllers\Api\RequisicionController;
 use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\SupportTicketController;
+use App\Http\Controllers\Api\TramiteServicioController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\VehiculoMantenimientoController;
 use App\Http\Middleware\PermisoCatalogo;
@@ -139,6 +140,22 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Facturas (CFDI) cargadas a las órdenes de compra.
     Route::get('facturas', [FacturaController::class, 'index'])->middleware('permission:facturas-index');
+
+    // Trámites de servicios: el área sube las facturas; Recursos Materiales valida y se generan requisición, orden y CLC.
+    Route::get('servicios', [TramiteServicioController::class, 'index'])->middleware('permission:servicios-index');
+    Route::post('servicios', [TramiteServicioController::class, 'store'])->middleware('permission:servicios-create');
+    Route::whereNumber(['tramite', 'factura'])->group(function () {
+        Route::get('servicios/{tramite}', [TramiteServicioController::class, 'show'])->middleware('permission:servicios-index');
+        Route::put('servicios/{tramite}', [TramiteServicioController::class, 'update'])->middleware('permission:servicios-create');
+        Route::post('servicios/{tramite}/facturas', [TramiteServicioController::class, 'subirFactura'])->middleware('permission:servicios-create');
+        Route::put('servicios/{tramite}/facturas/{factura}', [TramiteServicioController::class, 'clasificarFactura'])->middleware('permission:servicios-create');
+        Route::delete('servicios/{tramite}/facturas/{factura}', [TramiteServicioController::class, 'quitarFactura'])->middleware('permission:servicios-create');
+        Route::get('servicios/{tramite}/facturas/{factura}/xml', [TramiteServicioController::class, 'descargarXml'])->middleware('permission:servicios-index');
+        Route::post('servicios/{tramite}/enviar', [TramiteServicioController::class, 'enviar'])->middleware('permission:servicios-create');
+        Route::post('servicios/{tramite}/validar', [TramiteServicioController::class, 'validar'])->middleware('permission:servicios-validar');
+        Route::post('servicios/{tramite}/rechazar', [TramiteServicioController::class, 'rechazar'])->middleware('permission:servicios-validar');
+        Route::post('servicios/{tramite}/cancelar', [TramiteServicioController::class, 'cancelar'])->middleware('permission:servicios-create|servicios-validar');
+    });
 
     // Trámite de CLC entre áreas (cada acción revisa su propio permiso en App\Services\TramiteClc).
     Route::get('clc', [ClcController::class, 'index'])->middleware('permission:clc-index');

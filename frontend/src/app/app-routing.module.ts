@@ -63,6 +63,17 @@ const routes: Routes = [
         data: { permission: ['recursos-materiales-index', 'ordenes-compra-create', 'ordenes-compra-cancelar', 'ordenes-compra-pagar', 'ordenes-compra-verificar-sat'] },
         loadComponent: () => import('./pages/ordenes-compra/ordenes-compra.component').then((c) => c.OrdenesCompraComponent)
       },
+      // Trámites de servicios: facturas primero; al validarse se generan requisición, orden de compra y CLC.
+      {
+        path: 'servicios',
+        data: { permission: 'servicios-index' },
+        loadComponent: () => import('./pages/servicios/servicios-lista.component').then((c) => c.ServiciosListaComponent)
+      },
+      {
+        path: 'servicios/:id',
+        data: { permission: 'servicios-index' },
+        loadComponent: () => import('./pages/servicios/servicio-detalle.component').then((c) => c.ServicioDetalleComponent)
+      },
       // Almacén conforme a la orden de compra.
       {
         path: 'almacen',

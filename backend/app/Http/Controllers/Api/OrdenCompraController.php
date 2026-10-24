@@ -384,6 +384,11 @@ class OrdenCompraController extends Controller
             $errores[] = "La factura {$cfdi['uuid']} ya está cargada en {$donde($mismoUuid)}.";
         }
 
+        $enTramite = \App\Models\TramiteServicioFactura::with('tramite:id,folio_completo')->where('uuid', $cfdi['uuid'])->first();
+        if ($enTramite) {
+            $errores[] = "La factura {$cfdi['uuid']} ya está en el trámite de servicios {$enTramite->tramite?->folio_completo}.";
+        }
+
         // Una factura cancelada (con su orden de compra) se puede cargar una sola vez más.
         $cancelada = OrdenCompra::where('xml_uuid_cancelado', $cfdi['uuid'])->orderBy('id')->get(['folio_completo']);
         if ($cancelada->count() >= 2) {
@@ -567,7 +572,8 @@ class OrdenCompraController extends Controller
     }
 
     /** Folio consecutivo por año (CLC-2026-0001), bitácora y arranque del trámite. */
-    private function crearClc(OrdenCompra $ordenCompra, string $nota = ''): void
+    /** Genera la CLC de la orden (folio CLC-AÑO-0001) e inicia su trámite. También la usa el trámite de servicios. */
+    public function crearClc(OrdenCompra $ordenCompra, string $nota = ''): void
     {
         $año = (int) now('America/Mexico_City')->format('Y');
         // Los folios de CLC sustituidas por una refactura ya no están en la orden: también cuentan, para no repetirlos.

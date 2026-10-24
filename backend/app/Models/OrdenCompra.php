@@ -12,7 +12,7 @@ class OrdenCompra extends Model
     protected $table = 'ordenes_compra';
 
     protected $fillable = [
-        'id_tb_egreso_requisicion', 'proveedor_id', 'sin_factura', 'folio', 'año', 'folio_completo', 'fecha', 'importe', 'xml_uuid_cancelado',
+        'id_tb_egreso_requisicion', 'proveedor_id', 'sin_factura', 'tramite_servicio_id', 'folio', 'año', 'folio_completo', 'fecha', 'importe', 'xml_uuid_cancelado',
         'observaciones', 'user_id', 'xml_path', 'xml_uuid', 'xml_rfc_emisor', 'xml_nombre_emisor',
         'xml_serie', 'xml_folio', 'xml_fecha', 'xml_subtotal', 'xml_total', 'xml_isr', 'xml_cargado_at', 'xml_user_id',
         'sat_estado', 'sat_estatus_cancelacion', 'sat_efos', 'sat_verificado_at',
@@ -61,6 +61,12 @@ class OrdenCompra extends Model
     public function aFavorDe(): ?string
     {
         return $this->sin_factura ? $this->requisicion?->beneficiario : $this->proveedor?->nombre;
+    }
+
+    /** Trámite de servicios del que salió la orden (sus facturas, una o varias, están en el trámite). */
+    public function tramiteServicio()
+    {
+        return $this->belongsTo(TramiteServicio::class, 'tramite_servicio_id');
     }
 
     public function proveedor()
