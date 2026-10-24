@@ -54,6 +54,8 @@ class VehiculoMantenimientoController extends Controller
                 'requisicion_id' => $m->id_tb_egreso_requisicion,
                 'requisicion' => $m->requisicion?->folio_completo,
                 'requisicion_estado' => $m->requisicion?->catEgresoRequisicionEstado?->descripcion,
+                // Cancelada: el taller puede hacer otra que la sustituya.
+                'requisicion_cancelada' => (int) $m->requisicion?->id_cat_egreso_requisicion_estado === \App\Models\EgresoRequisicion::CANCELADA,
             ]);
 
         // Vehículos que se pueden recibir: activos, con secretaría de resguardo y que no estén ya en el taller.

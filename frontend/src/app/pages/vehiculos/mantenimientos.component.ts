@@ -30,6 +30,7 @@ interface Mantenimiento {
   requisicion_id: number | null;
   requisicion: string | null;
   requisicion_estado: string | null;
+  requisicion_cancelada: boolean;
 }
 
 interface Respuesta extends Paginado<Mantenimiento> {

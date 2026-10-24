@@ -493,8 +493,12 @@ class RequisicionController extends Controller
             return null;
         }
 
-        return VehiculoMantenimiento::with('vehiculo', 'departamento')->whereKey($id)
-            ->where('estado', 'en_taller')->whereNull('id_tb_egreso_requisicion')->first();
+        // Sin requisición, o con una cancelada: el taller puede hacer una nueva que la sustituye.
+        return VehiculoMantenimiento::with('vehiculo', 'departamento', 'requisicion:id_tb_egreso_requisicion,folio_completo,id_cat_egreso_requisicion_estado')
+            ->whereKey($id)->where('estado', 'en_taller')
+            ->where(fn ($q) => $q->whereNull('id_tb_egreso_requisicion')
+                ->orWhereHas('requisicion', fn ($r) => $r->where('id_cat_egreso_requisicion_estado', EgresoRequisicion::CANCELADA)))
+            ->first();
     }
 
     /**
@@ -714,7 +718,7 @@ class RequisicionController extends Controller
         $user = $request->user();
         $mantenimiento = $this->mantenimientoParaRequisicion($request->input('mantenimiento_id'));
         if ($request->filled('mantenimiento_id') && ! $mantenimiento) {
-            throw ValidationException::withMessages(['concepto' => 'Ese mantenimiento ya tiene requisición o ya se entregó el vehículo.']);
+            throw ValidationException::withMessages(['concepto' => 'Ese mantenimiento ya tiene una requisición vigente (no cancelada) o ya se entregó el vehículo.']);
         }
         if ($mantenimiento) {
             if ((int) $validated['id_cat_egreso_unidad_administrativa'] !== (int) $mantenimiento->id_cat_egreso_unidad_administrativa) {
@@ -782,11 +786,18 @@ class RequisicionController extends Controller
                 'extemporanea' => $extemporanea,
             ]);
 
+            // Si el mantenimiento tenía una requisición cancelada, esta la sustituye (queda anotado en la bitácora de ambas).
+            $sustituida = $mantenimiento?->requisicion;
             $mantenimiento?->update(['id_tb_egreso_requisicion' => $requisicion->id_tb_egreso_requisicion]);
             $this->guardarDetalles($requisicion, $filasCalculadas);
-            $this->bitacora($requisicion, 1, 1, $extemporanea
+            $this->bitacora($requisicion, 1, 1, ($extemporanea
                 ? 'Requisición creada fuera del periodo de captura (extemporánea): requiere autorización de la Subdirección Administrativa.'
-                : 'Requisición creada.');
+                : 'Requisición creada.')
+                .($sustituida ? " Sustituye a la requisición cancelada {$sustituida->folio_completo} del mantenimiento {$mantenimiento->folio_completo}." : ''));
+            if ($sustituida) {
+                $this->bitacora($sustituida, EgresoRequisicion::CANCELADA, EgresoRequisicion::CANCELADA,
+                    "Sustituida por la requisición {$requisicion->folio_completo} del mantenimiento {$mantenimiento->folio_completo}.");
+            }
 
             return $requisicion;
         });

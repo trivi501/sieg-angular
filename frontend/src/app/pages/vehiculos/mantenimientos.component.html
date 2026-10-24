@@ -76,7 +76,11 @@
               <td class="text-nowrap">
                 @if (m.requisicion_id) {
                   <a [routerLink]="['/requisiciones', m.requisicion_id]">{{ m.requisicion }}</a>
-                  <small class="d-block text-muted">{{ m.requisicion_estado }}</small>
+                  <small class="d-block" [class.text-danger]="m.requisicion_cancelada" [class.text-muted]="!m.requisicion_cancelada">{{ m.requisicion_estado }}</small>
+                  <!-- Cancelada: se puede hacer otra que la sustituya. -->
+                  @if (m.requisicion_cancelada && m.estado === 'en_taller' && datos()!.puedeRequisicion) {
+                    <a [routerLink]="['/requisiciones/nueva']" [queryParams]="{ mantenimiento: m.id }" class="btn btn-sm btn-outline-primary mt-1" appAccion="Hacer nueva requisición" icono="file-add"></a>
+                  }
                 } @else if (m.estado === 'en_taller' && datos()!.puedeRequisicion) {
                   <a [routerLink]="['/requisiciones/nueva']" [queryParams]="{ mantenimiento: m.id }" class="btn btn-sm btn-outline-primary" appAccion="Hacer requisición" icono="file-add"></a>
                 } @else {
