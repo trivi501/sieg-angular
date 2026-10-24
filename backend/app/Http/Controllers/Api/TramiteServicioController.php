@@ -157,6 +157,7 @@ class TramiteServicioController extends Controller
                 'subtotal' => $f->subtotal,
                 'descuento' => $f->descuento,
                 'iva' => $f->iva,
+                'ieps' => $f->ieps,
                 'isr' => $f->isr,
                 'total' => $f->total,
                 'importe' => $f->importe(),
@@ -257,6 +258,7 @@ class TramiteServicioController extends Controller
                     'subtotal' => $cfdi['subtotal'],
                     'descuento' => $cfdi['descuento'],
                     'iva' => $cfdi['iva'],
+                    'ieps' => $cfdi['ieps'],
                     'isr' => $cfdi['isr'],
                     'total' => $cfdi['total'],
                     // Fondo: cada artículo lleva luego su partida / proyecto / fuente.

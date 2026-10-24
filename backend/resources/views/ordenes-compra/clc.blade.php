@@ -103,8 +103,10 @@
                     'nombre' => $nombrePartida($p),
                     'factura' => $f->uuid,
                     'fecha_factura' => $f->fecha?->format('d/m/Y'),
-                    'subtotal' => $p['base'],
+                    'subtotal' => $p['subtotal'],
+                    'descuento' => $p['descuento'],
                     'iva' => $p['iva'],
+                    'ieps' => $p['ieps'],
                     'isr' => $p['isr'],
                     'importe' => $p['importe'],
                 ]))->values();
@@ -118,12 +120,45 @@
                         ->where('CLAVE6', $f->proyecto)->where('PARTIDA', $f->partida)->value('NOMBRE_PARTIDA'),
                     'factura' => $f->uuid,
                     'fecha_factura' => $f->fecha?->format('d/m/Y'),
-                    'subtotal' => $f->base(),
-                    'iva' => round($f->importe() - $f->base(), 2),
+                    'subtotal' => $f->subtotal,
+                    'descuento' => $f->descuento,
+                    'iva' => $f->iva,
+                    // IEPS y otros traslados: lo que completa el importe del CFDI.
+                    'ieps' => round($f->importe() - $f->base() - $f->iva, 2),
                     'isr' => $f->isr,
                     'importe' => $f->importe(),
                 ])->values();
+        } elseif ($renglones->isNotEmpty() && $orden->xml_path && \Illuminate\Support\Facades\Storage::disk('local')->exists($orden->xml_path)
+            && ($cfdiOc = rescue(fn () => \App\Services\Cfdi::leer(\Illuminate\Support\Facades\Storage::disk('local')->get($orden->xml_path)), null, false))) {
+            // Orden de compra con su factura: el subtotal, descuento, IVA, IEPS e ISR de la factura se reparten
+            // entre los renglones (partidas) en proporción a su importe; el último lleva el redondeo.
+            $pesos = $renglones->pluck('importe')->all();
+            $sumaPesos = array_sum($pesos) ?: 1;
+            $repartir = function (float $total) use ($pesos, $sumaPesos) {
+                $partes = [];
+                $acumulado = 0.0;
+                foreach ($pesos as $i => $peso) {
+                    $partes[$i] = $i === count($pesos) - 1 ? round($total - $acumulado, 2) : round($total * $peso / $sumaPesos, 2);
+                    $acumulado += $partes[$i];
+                }
+
+                return $partes;
+            };
+            $partes = collect(['subtotal', 'descuento', 'iva', 'ieps', 'isr'])->mapWithKeys(fn ($c) => [$c => $repartir((float) $cfdiOc[$c])]);
+            $renglones = $renglones->values()->map(function ($r, $i) use ($partes) {
+                foreach ($partes as $campo => $valores) {
+                    $r[$campo] = $valores[$i];
+                }
+                $r['importe'] = round($r['subtotal'] - $r['descuento'] + $r['iva'] + $r['ieps'], 2);
+
+                return $r;
+            });
         }
+
+        // Sin factura (apoyos) o renglones sin desglose: sin descuento ni IEPS.
+        $renglones = $renglones->map(fn ($r) => $r + ['descuento' => 0.0, 'ieps' => 0.0]);
+        $totalImporte = $renglones->sum('importe') ?: (float) $orden->importe;
+        $isr = (float) $renglones->sum('isr');
 
         // Firmas: Solicita = titular de la secretaría; Autoriza = Tesorería (rol "autoriza" de la CLC) y
         // Sindicatura (rol "visto bueno").
@@ -202,6 +237,7 @@
                 <th rowspan="3" style="width: 7%;">Sub Total</th>
                 <th rowspan="3" style="width: 5%;">Desc.</th>
                 <th rowspan="3" style="width: 6%;">I.V.A.</th>
+                <th rowspan="3" style="width: 5%;">I.E.P.S.</th>
                 <th rowspan="3" style="width: 5%;">I.S.R.</th>
                 <th rowspan="3" style="width: 7%;">Importe</th>
             </tr>
@@ -228,8 +264,9 @@
                     <td style="font-size: 6.2pt; white-space: nowrap;">{{ $r['factura'] ?? ($orden->sin_factura ? $req?->beneficiario_referencia : $orden->xml_uuid) }}</td>
                     <td>{{ $r['fecha_factura'] ?? ($orden->sin_factura ? $req?->beneficiario_fecha?->format('d/m/Y') : $orden->xml_fecha?->format('d/m/Y')) }}</td>
                     <td class="num">{{ $n($r['subtotal']) }}</td>
-                    <td class="num">0.00</td>
+                    <td class="num">{{ $n($r['descuento']) }}</td>
                     <td class="num">{{ $n($r['iva']) }}</td>
+                    <td class="num">{{ $n($r['ieps']) }}</td>
                     <td class="num">{{ $n($r['isr']) }}</td>
                     <td class="num">{{ $n($r['importe']) }}</td>
                 </tr>

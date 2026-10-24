@@ -14,7 +14,7 @@ class Cfdi
 {
     /**
      * @return array{tipo: ?string, uuid: ?string, serie: ?string, folio: ?string, fecha: ?string, rfc_emisor: ?string,
-     *   nombre_emisor: ?string, rfc_receptor: ?string, subtotal: float, descuento: float, iva: float, isr: float, total: float,
+     *   nombre_emisor: ?string, rfc_receptor: ?string, subtotal: float, descuento: float, iva: float, ieps: float, isr: float, total: float,
      *   sello: ?string, conceptos: array<int, array<string, mixed>>}
      */
     public static function leer(string $contenido): array
@@ -45,9 +45,12 @@ class Cfdi
 
         // Impuestos del comprobante (los de cada concepto son su desglose): IVA (002) trasladado e ISR (001) retenido.
         $iva = 0.0;
+        $ieps = 0.0;
         foreach ($xpath->query('/*[local-name()="Comprobante"]/*[local-name()="Impuestos"]/*[local-name()="Traslados"]/*[local-name()="Traslado"]') as $t) {
             if ($attr($t, 'Impuesto') === '002') {
                 $iva += $num($t, 'Importe');
+            } elseif ($attr($t, 'Impuesto') === '003') {
+                $ieps += $num($t, 'Importe');
             }
         }
         $isr = 0.0;
@@ -61,9 +64,12 @@ class Cfdi
         foreach ($xpath->query('/*[local-name()="Comprobante"]/*[local-name()="Conceptos"]/*[local-name()="Concepto"]') as $c) {
             // Impuestos del propio concepto: para repartir una factura entre partidas con el monto exacto de cada artículo.
             $ivaConcepto = 0.0;
+            $iepsConcepto = 0.0;
             foreach ($xpath->query('./*[local-name()="Impuestos"]/*[local-name()="Traslados"]/*[local-name()="Traslado"]', $c) as $t) {
                 if ($attr($t, 'Impuesto') === '002') {
                     $ivaConcepto += $num($t, 'Importe');
+                } elseif ($attr($t, 'Impuesto') === '003') {
+                    $iepsConcepto += $num($t, 'Importe');
                 }
             }
             $isrConcepto = 0.0;
@@ -81,6 +87,7 @@ class Cfdi
                 'descuento' => $num($c, 'Descuento'),
                 'importe' => $num($c, 'Importe'),
                 'iva' => round($ivaConcepto, 2),
+                'ieps' => round($iepsConcepto, 2),
                 'isr' => round($isrConcepto, 2),
             ];
         }
@@ -88,7 +95,7 @@ class Cfdi
         // CFDI sin impuestos por concepto (versiones viejas): el IVA y el ISR del comprobante se reparten
         // en proporción a la base de cada concepto (el último lleva el redondeo).
         $base = array_sum(array_map(fn ($c) => $c['importe'] - $c['descuento'], $conceptos));
-        foreach (['iva' => $iva, 'isr' => $isr] as $campo => $totalImpuesto) {
+        foreach (['iva' => $iva, 'ieps' => $ieps, 'isr' => $isr] as $campo => $totalImpuesto) {
             if ($totalImpuesto > 0 && $base > 0 && array_sum(array_column($conceptos, $campo)) == 0) {
                 $repartido = 0.0;
                 foreach ($conceptos as $i => &$c) {
@@ -113,6 +120,7 @@ class Cfdi
             'subtotal' => $num($comprobante, 'SubTotal'),
             'descuento' => $num($comprobante, 'Descuento'),
             'iva' => round($iva, 2),
+            'ieps' => round($ieps, 2),
             'isr' => round($isr, 2),
             'total' => round((float) $total, 2),
             'sello' => $attr($comprobante, 'Sello'),

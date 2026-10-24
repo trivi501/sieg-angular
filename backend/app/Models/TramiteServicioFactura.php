@@ -14,7 +14,7 @@ class TramiteServicioFactura extends Model
 
     protected $fillable = [
         'tramite_servicio_id', 'xml_path', 'uuid', 'rfc_emisor', 'nombre_emisor', 'rfc_receptor', 'serie', 'folio', 'fecha',
-        'subtotal', 'descuento', 'iva', 'isr', 'total', 'conceptos', 'sat_estado', 'sat_verificado_at',
+        'subtotal', 'descuento', 'iva', 'ieps', 'isr', 'total', 'conceptos', 'sat_estado', 'sat_verificado_at',
         'fuente', 'proyecto', 'partida', 'concepto',
     ];
 
@@ -27,6 +27,7 @@ class TramiteServicioFactura extends Model
             'subtotal' => 'float',
             'descuento' => 'float',
             'iva' => 'float',
+            'ieps' => 'float',
             'isr' => 'float',
             'total' => 'float',
             'conceptos' => 'array',
@@ -76,7 +77,7 @@ class TramiteServicioFactura extends Model
      * Fondo revolvente: los montos de la factura por partida / proyecto / fuente, sumando sus artículos. Una
      * factura con dos partidas da dos renglones, cada uno solo con lo de sus artículos.
      *
-     * @return array<int, array{fuente: string, proyecto: string, partida: string, base: float, iva: float, isr: float, importe: float}>
+     * @return array<int, array{fuente: string, proyecto: string, partida: string, subtotal: float, descuento: float, base: float, iva: float, ieps: float, isr: float, importe: float}>
      */
     public function porPartida(): array
     {
@@ -84,13 +85,17 @@ class TramiteServicioFactura extends Model
         foreach ($this->conceptos ?? [] as $a) {
             $clave = ($a['fuente'] ?? '').'|'.($a['proyecto'] ?? '').'|'.($a['partida'] ?? '');
             $base = round((float) ($a['importe'] ?? 0) - (float) ($a['descuento'] ?? 0), 2);
-            $grupos[$clave] ??= ['fuente' => $a['fuente'] ?? '', 'proyecto' => $a['proyecto'] ?? '', 'partida' => $a['partida'] ?? '', 'base' => 0.0, 'iva' => 0.0, 'isr' => 0.0];
+            $grupos[$clave] ??= ['fuente' => $a['fuente'] ?? '', 'proyecto' => $a['proyecto'] ?? '', 'partida' => $a['partida'] ?? '', 'subtotal' => 0.0, 'descuento' => 0.0, 'base' => 0.0, 'iva' => 0.0, 'ieps' => 0.0, 'isr' => 0.0];
+            $grupos[$clave]['subtotal'] += (float) ($a['importe'] ?? 0);
+            $grupos[$clave]['descuento'] += (float) ($a['descuento'] ?? 0);
             $grupos[$clave]['base'] += $base;
             $grupos[$clave]['iva'] += (float) ($a['iva'] ?? 0);
+            $grupos[$clave]['ieps'] += (float) ($a['ieps'] ?? 0);
             $grupos[$clave]['isr'] += (float) ($a['isr'] ?? 0);
         }
 
-        return array_values(array_map(fn ($g) => [...$g, 'base' => round($g['base'], 2), 'iva' => round($g['iva'], 2), 'isr' => round($g['isr'], 2),
-            'importe' => round($g['base'] + $g['iva'], 2)], $grupos));
+        // Importe = subtotal − descuento + IVA + IEPS (antes de retener el ISR).
+        return array_values(array_map(fn ($g) => [...array_map(fn ($v) => is_float($v) ? round($v, 2) : $v, $g),
+            'importe' => round($g['base'] + $g['iva'] + $g['ieps'], 2)], $grupos));
     }
 }
