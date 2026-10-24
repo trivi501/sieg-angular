@@ -46,7 +46,6 @@
         $detalles = $req?->tbEgresoRequisicionDetalles ?? collect();
         $proveedor = $orden->proveedor;
         $cantidad = fn ($c) => is_numeric($c) ? (fmod((float) $c, 1) == 0 ? number_format((float) $c, 0) : number_format((float) $c, 2)) : $c;
-        $folioFactura = trim(($orden->xml_serie ?? '').' '.($orden->xml_folio ?? ''));
 
         // Firman por Recursos Materiales (firmantes generales del documento "orden_compra"):
         // solicita el Jefe del Departamento de Recursos Materiales y autoriza el Subsecretario de Administración.
@@ -81,22 +80,13 @@
             <td class="valor">{{ $req?->folio_completo }}</td>
             <td colspan="4" class="valor">{{ mb_strtoupper($proveedor?->nombre ?? '') }}</td>
         </tr>
+        {{-- Los datos de la factura (fecha, folio, UUID) no se imprimen en la orden de compra. --}}
         <tr>
-            <td class="etiqueta">Fecha de factura:</td>
-            <td class="valor">{{ $orden->xml_fecha?->setTimezone($tz)->format('d/m/Y') }}</td>
+            <td colspan="2"></td>
             <td class="etiqueta-prov">R.F.C:</td>
             <td class="valor" style="width: 20%;">{{ $proveedor?->rfc }}</td>
             <td style="width: 8%; white-space: nowrap;">Correo E:</td>
             <td class="valor">{{ $proveedor?->correo }}</td>
-        </tr>
-        <tr>
-            <td class="etiqueta">Folio de factura:</td>
-            <td class="valor">{{ $folioFactura }}</td>
-            <td colspan="4"></td>
-        </tr>
-        <tr>
-            <td class="etiqueta">Validación CFDI:</td>
-            <td class="valor" colspan="5" style="font-size: 7.5pt;">{{ $orden->xml_uuid }}</td>
         </tr>
     </table>
 
