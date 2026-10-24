@@ -11,9 +11,6 @@
         @if (puede().imprimirOrden) {
           <button type="button" class="btn btn-sm btn-outline-secondary" (click)="imprimir()" appAccion="Imprimir orden" icono="printer"></button>
         }
-        @if (puede().asignarAlmacen) {
-          <button type="button" class="btn btn-sm btn-outline-primary" [disabled]="ocupado()" (click)="asignarAlmacen()" appAccion="Asignar al almacén" icono="inbox"></button>
-        }
         @if (puede().verAlmacen) {
           <a [routerLink]="['/almacen', o.id]" class="btn btn-sm btn-outline-primary" appAccion="Ver en almacén" icono="shop"></a>
         } @else if (o.almacen_asignada_at) {

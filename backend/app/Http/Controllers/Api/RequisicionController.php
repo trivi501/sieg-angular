@@ -325,8 +325,7 @@ class RequisicionController extends Controller
                 'generarClc' => $oc && $oc->xml_uuid && ! $oc->clc_folio_completo && ! $oc->cancelada_at && $user->can('requisiciones-clc'),
                 'imprimirClc' => $oc && $oc->clc_folio_completo && ! $oc->clc_cancelada_at,
                 'cancelarClc' => $oc && TramiteClc::impedimentoParaCancelar($oc, $user) === null,
-                // Almacén: Recursos Materiales asigna la orden para que el almacén reciba los bienes.
-                'asignarAlmacen' => $compra && ! $compra->cancelada_at && ! $oc->almacen_asignada_at && $user->can('ordenes-compra-almacen'),
+                // Almacén: ya no se asigna desde la requisición (se quitó el botón); se sigue viendo si ya estaba asignada.
                 'verAlmacen' => $oc && $oc->almacen_asignada_at && $user->can('almacen-index'),
             ],
             // Si la CLC está vigente pero ya no le toca cancelarla, por qué (se muestra junto al botón).

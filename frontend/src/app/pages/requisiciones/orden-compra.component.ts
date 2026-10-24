@@ -9,7 +9,6 @@ import { Observable } from 'rxjs';
 import { erroresDe } from 'src/app/core/api';
 import { money } from 'src/app/core/formato';
 import { DetalleRequisicion, ProveedorOrden, RequisicionesService, abrirBlob } from './requisiciones.service';
-import { AlmacenService } from '../almacen/almacen.service';
 import { AccionComponent } from 'src/app/shared/accion.component';
 import { SelectBusquedaDirective } from 'src/app/shared/select-busqueda.directive';
 
@@ -34,7 +33,6 @@ type Dialogo = 'generar' | 'proveedor' | 'fecha' | 'refacturar' | 'cancelar' | '
 })
 export class OrdenCompraComponent {
   private servicio = inject(RequisicionesService);
-  private almacen = inject(AlmacenService);
   private modal = inject(NgbModal);
 
   readonly d = input.required<DetalleRequisicion>();
@@ -258,23 +256,6 @@ export class OrdenCompraComponent {
       error: (e: HttpErrorResponse) => {
         this.ocupado.set(false);
         this.actualizado.emit({ tipo: 'danger', texto: erroresDe(e).mensaje });
-      }
-    });
-  }
-
-  /** Recursos Materiales asigna la orden al almacén para que reciba los bienes. */
-  asignarAlmacen(): void {
-    const o = this.orden()!;
-    this.ocupado.set(true);
-    this.almacen.asignar(o.id).subscribe({
-      next: (r) => {
-        this.ocupado.set(false);
-        this.actualizado.emit({ tipo: 'success', texto: r.message });
-      },
-      error: (e: HttpErrorResponse) => {
-        this.ocupado.set(false);
-        const { campos, mensaje } = erroresDe(e);
-        this.actualizado.emit({ tipo: 'danger', texto: campos['orden'] ?? mensaje });
       }
     });
   }

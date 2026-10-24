@@ -222,7 +222,6 @@ export interface DetalleRequisicion {
     | 'generarClc'
     | 'imprimirClc'
     | 'cancelarClc'
-    | 'asignarAlmacen'
     | 'verAlmacen'
     | 'generarClcSinFactura',
     boolean
