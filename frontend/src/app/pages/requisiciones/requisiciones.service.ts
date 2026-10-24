@@ -83,6 +83,8 @@ export interface Edicion {
     beneficiario_referencia?: string | null;
     beneficiario_fecha?: string | null;
     incluye_iva?: boolean;
+    /** Requisición de mantenimiento vehicular: el taller captura los precios. */
+    de_mantenimiento?: boolean;
   };
 }
 

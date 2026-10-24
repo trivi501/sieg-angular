@@ -53,6 +53,10 @@ export class RequisicionFormComponent {
   fechaReferencia = signal('');
   conIva = signal(false);
 
+  /** Mantenimiento vehicular: el taller captura precio e IVA de cada concepto desde el alta. */
+  deMantenimiento = signal(false);
+  conPrecios = computed(() => !this.cotizacion() && (!!this.mantenimiento() || this.deMantenimiento()));
+
   errores = signal<Record<string, string>>({});
   error = signal('');
   guardando = signal(false);
@@ -95,6 +99,7 @@ export class RequisicionFormComponent {
           this.referencia.set(e.requisicion.beneficiario_referencia ?? '');
           this.fechaReferencia.set(e.requisicion.beneficiario_fecha ?? '');
           this.conIva.set(!!e.requisicion.incluye_iva);
+          this.deMantenimiento.set(!!e.requisicion.de_mantenimiento);
           // En un apoyo el monto de cada renglón es su precio.
           this.filas.set(e.requisicion.filas.map((f) => ({ ...f, monto: e.requisicion.sin_factura ? (f.precio_unitario ?? null) : null })));
           this.cargado.set(true);
@@ -241,7 +246,8 @@ export class RequisicionFormComponent {
             fuente: f.fuente,
             cantidad: this.sinFactura() ? 1 : f.cantidad,
             descripcion: f.descripcion,
-            ...(this.sinFactura() ? { monto: f.monto ?? null } : {})
+            ...(this.sinFactura() ? { monto: f.monto ?? null } : {}),
+            ...(this.conPrecios() ? { precio_unitario: f.precio_unitario ?? null, lleva_iva: !!f.lleva_iva } : {})
           }))
         };
 

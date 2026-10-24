@@ -30,7 +30,7 @@
 @if (mantenimiento(); as m) {
   <div class="alert alert-info py-2 small">
     Mantenimiento {{ m.folio }}: {{ m.vehiculo }}{{ m.area ? ' · ' + m.area : '' }}. La requisición va a nombre de la secretaría de resguardo del vehículo.
-    <span class="d-block mt-1">Solo se pueden usar las partidas de vehículos y mantenimiento: <b>2961, 2981, 3551, 3571 y 2614</b>.</span>
+    <span class="d-block mt-1">Solo se pueden usar las partidas de vehículos y mantenimiento: <b>2961, 2981, 3551, 3571 y 2614</b>. Captura el precio de cada concepto: después de aprobarla pasa directo a la suficiencia y luego a la orden de compra.</span>
   </div>
 }
 
@@ -149,6 +149,11 @@
                   <th style="width: 90px">Cantidad</th>
                 }
                 <th style="min-width: 240px">Descripción</th>
+                @if (conPrecios()) {
+                  <th style="min-width: 130px">Precio unitario</th>
+                  <th class="text-center">IVA</th>
+                  <th class="text-end">Subtotal</th>
+                }
                 <th></th>
               </tr>
             }
@@ -243,6 +248,26 @@
                     ></textarea>
                     <div class="invalid-feedback">{{ error_('filas.' + i + '.descripcion') }}</div>
                   </td>
+                  @if (conPrecios()) {
+                    <td>
+                      <input
+                        type="number"
+                        step="0.0001"
+                        min="0"
+                        class="form-control form-control-sm"
+                        placeholder="$0.00"
+                        [name]="'precio' + i"
+                        [ngModel]="f.precio_unitario"
+                        (ngModelChange)="cambiar(i, 'precio_unitario', $event)"
+                        [class.is-invalid]="error_('filas.' + i + '.precio_unitario')"
+                      />
+                      <div class="invalid-feedback">{{ error_('filas.' + i + '.precio_unitario') }}</div>
+                    </td>
+                    <td class="text-center">
+                      <input type="checkbox" class="form-check-input" [name]="'iva' + i" [ngModel]="f.lleva_iva" (ngModelChange)="cambiar(i, 'lleva_iva', $event)" />
+                    </td>
+                    <td class="text-end font-monospace small">{{ money(subTotalFila(f)) }}</td>
+                  }
                   <td>
                     @if (filas().length > 1) {
                       <button type="button" class="btn btn-sm btn-outline-danger" (click)="quitar(i)" appAccion="Quitar concepto" icono="delete"></button>
@@ -273,11 +298,11 @@
       @if (error_('filas')) {
         <div class="text-danger small">{{ error_('filas') }}</div>
       }
-      @if (sinFactura() && !cotizacion()) {
+      @if ((sinFactura() || conPrecios()) && !cotizacion()) {
         <div class="d-flex justify-content-end gap-4 small mb-2">
           <span>Subtotal <b class="font-monospace">{{ money(totales().subTotal) }}</b></span>
           <span>IVA <b class="font-monospace">{{ money(totales().iva) }}</b></span>
-          <span>Total del apoyo <b class="font-monospace">{{ money(totales().total) }}</b></span>
+          <span>{{ sinFactura() ? 'Total del apoyo' : 'Total' }} <b class="font-monospace">{{ money(totales().total) }}</b></span>
         </div>
       }
       @if (!cotizacion()) {

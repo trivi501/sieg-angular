@@ -176,6 +176,10 @@ class RequisicionController extends Controller
         $sinSuficiencia = $requisicion->suficiencia !== true;
         // Sin factura: el registro de la orden solo lleva la CLC del apoyo (folio AP-…); no es una compra.
         $sf = (bool) $requisicion->sin_factura;
+        // Mantenimiento con todos sus precios (capturados por el taller en el alta): no se envía a cotizar.
+        $conPrecios = $requisicion->tbEgresoRequisicionDetalles->isNotEmpty()
+            && $requisicion->tbEgresoRequisicionDetalles->every(fn ($d) => (float) $d->precio_unitario > 0);
+        $directoASuficiencia = $sf || ($conPrecios && $m !== null);
         $compra = $sf ? null : $requisicion->ordenCompra;
 
         return response()->json([
@@ -298,11 +302,11 @@ class RequisicionController extends Controller
                 'validar' => $estado === 2 && $user->hasRole(['Super Admin', 'Admin']) && $user->can('requisiciones-edit'),
                 'imprimir' => $estado === 3 || ($estado >= 5 && $estado !== EgresoRequisicion::CANCELADA),
                 // Sin factura (apoyo): no va a Recursos Materiales; de aprobada pasa a la suficiencia.
-                'enviarRecursos' => $estado === 3 && ! $sf && ($user->can('requisiciones-edit') || $taller),
+                'enviarRecursos' => $estado === 3 && ! $directoASuficiencia && ($user->can('requisiciones-edit') || $taller),
                 'recibir' => $estado === 5 && ($user->can('requisiciones-cotizar') || $taller),
                 'devolver' => in_array($estado, [5, 6], true) && $sinSuficiencia && $user->can('requisiciones-devolver'),
                 'cotizar' => $estado === 6 && $editable && ($user->can('requisiciones-cotizar') || $taller),
-                'suficiencia' => ($estado === 6 || ($sf && $estado === 3)) && $sinSuficiencia && $user->can('requisiciones-suficiencia'),
+                'suficiencia' => ($estado === 6 || ($directoASuficiencia && $estado === 3)) && $sinSuficiencia && $user->can('requisiciones-suficiencia'),
                 'extemporanea' => $requisicion->extemporaneaPendiente() && $user->can('requisiciones-extemporaneas'),
                 'cambiarFecha' => $this->puedeCambiarFecha($requisicion),
                 'cancelar' => $this->puedeCancelar($requisicion),
@@ -442,6 +446,7 @@ class RequisicionController extends Controller
                 'beneficiario_referencia' => $requisicion->beneficiario_referencia,
                 'beneficiario_fecha' => $requisicion->beneficiario_fecha?->format('Y-m-d'),
                 'incluye_iva' => (float) $requisicion->iva > 0,
+                'de_mantenimiento' => VehiculoMantenimiento::where('id_tb_egreso_requisicion', $requisicion->id_tb_egreso_requisicion)->exists(),
             ],
         ]);
     }
@@ -518,6 +523,8 @@ class RequisicionController extends Controller
                 'beneficiario_referencia' => [Rule::requiredIf(fn () => request()->boolean('sin_factura')), 'nullable', 'string', 'max:100'],
                 'beneficiario_fecha' => [Rule::requiredIf(fn () => request()->boolean('sin_factura')), 'nullable', 'date'],
                 'filas.*.monto' => [Rule::requiredIf(fn () => request()->boolean('sin_factura')), 'nullable', 'numeric', 'min:0.01'],
+                'filas.*.precio_unitario' => 'nullable|numeric|min:0|decimal:0,4',
+                'filas.*.lleva_iva' => 'boolean',
             ],
             [
                 'concepto.required' => 'Captura el concepto de la requisición.',
@@ -543,11 +550,16 @@ class RequisicionController extends Controller
      * Sin factura (apoyo): no pasa por cotización, así que el monto de cada renglón se captura desde el
      * alta como su precio (cantidad 1). Con factura, las filas quedan como vienen (el precio lo pone la cotización).
      */
-    private function filasDeCaptura(array $validated): array
+    private function filasDeCaptura(array $validated, bool $conPrecios = false): array
     {
         $filas = $validated['filas'] ?? [];
+        if ($conPrecios) {
+            // Mantenimiento vehicular: el taller captura precio unitario e IVA de cada concepto desde el alta.
+            return array_map(fn ($f) => ['precio_unitario' => (float) $f['precio_unitario'], 'lleva_iva' => (bool) ($f['lleva_iva'] ?? false)]
+                + array_diff_key($f, ['monto' => true]), $filas);
+        }
         if (empty($validated['sin_factura'])) {
-            return array_map(fn ($f) => array_diff_key($f, ['monto' => true]), $filas);
+            return array_map(fn ($f) => array_diff_key($f, ['monto' => true, 'precio_unitario' => true, 'lleva_iva' => true]), $filas);
         }
 
         return array_map(fn ($f) => ['cantidad' => 1, 'precio_unitario' => (float) $f['monto']] + array_diff_key($f, ['monto' => true, 'cantidad' => true]), $filas);
@@ -576,7 +588,8 @@ class RequisicionController extends Controller
             $cantidad = (float) ($fila['cantidad'] ?? 1);
             $precio = isset($fila['precio_unitario']) && $fila['precio_unitario'] !== '' ? (float) $fila['precio_unitario'] : null;
             $subTotal = $precio !== null ? round($precio * $cantidad, 4) : null;
-            $iva = $subTotal !== null ? round($subTotal * $ivaFactor, 4) : null;
+            $factor = array_key_exists('lleva_iva', $fila) ? ($fila['lleva_iva'] ? self::IVA_FACTOR : 0) : $ivaFactor;
+            $iva = $subTotal !== null ? round($subTotal * $factor, 4) : null;
             $total = $subTotal !== null ? round($subTotal + $iva, 4) : null;
 
             $calculadas[] = $fila + [
@@ -584,7 +597,7 @@ class RequisicionController extends Controller
                 'precio_unitario' => $precio,
                 'sub_total' => $subTotal,
                 'iva' => $iva,
-                'iva_factor' => $ivaFactor,
+                'iva_factor' => $factor,
                 'total' => $total,
             ];
 
@@ -600,6 +613,20 @@ class RequisicionController extends Controller
      * Cada concepto capturado debe ir a una línea (fuente + proyecto + partida) que exista
      * en el presupuesto de la unidad administrativa elegida.
      */
+    /** El taller captura el precio de cada concepto desde el alta (no pasa por cotización). */
+    private function validarPreciosMantenimiento(array $filas): void
+    {
+        $errores = [];
+        foreach ($filas as $i => $fila) {
+            if (! isset($fila['precio_unitario']) || (float) $fila['precio_unitario'] <= 0) {
+                $errores["filas.{$i}.precio_unitario"] = 'Captura el precio unitario del concepto.';
+            }
+        }
+        if ($errores) {
+            throw ValidationException::withMessages($errores);
+        }
+    }
+
     /** La requisición de un mantenimiento vehicular solo admite las partidas de VehiculoMantenimiento::PARTIDAS. */
     private function validarPartidasMantenimiento(array $filas): void
     {
@@ -709,13 +736,14 @@ class RequisicionController extends Controller
         $this->validarLineasPresupuesto($validated['filas'] ?? [], $unidad);
         if ($mantenimiento) {
             $this->validarPartidasMantenimiento($validated['filas'] ?? []);
+            $this->validarPreciosMantenimiento($validated['filas'] ?? []);
             if (! empty($validated['sin_factura'])) {
                 throw ValidationException::withMessages(['sin_factura' => 'Un mantenimiento vehicular lleva orden de compra y factura: no puede ser sin factura.']);
             }
         }
         $prefijo = $unidad?->prefijo ?: 'REQ';
 
-        [$filasCalculadas, $totales] = $this->calcularFilas($this->filasDeCaptura($validated), (bool) ($validated['incluye_iva'] ?? false));
+        [$filasCalculadas, $totales] = $this->calcularFilas($this->filasDeCaptura($validated, $mantenimiento !== null), (bool) ($validated['incluye_iva'] ?? false));
 
         // Fuera del periodo ordinario de captura queda extemporánea (no avanza sin autorización).
         $extemporanea = ! EjercicioFiscal::enPeriodoDeCaptura(now('America/Mexico_City'));
@@ -843,11 +871,13 @@ class RequisicionController extends Controller
         }
 
         $this->validarLineasPresupuesto($validated['filas'] ?? [], EgresoUnidadAdministrativa::find($validated['id_cat_egreso_unidad_administrativa']));
-        if (VehiculoMantenimiento::where('id_tb_egreso_requisicion', $requisicion->id_tb_egreso_requisicion)->exists()) {
+        $deMantenimiento = VehiculoMantenimiento::where('id_tb_egreso_requisicion', $requisicion->id_tb_egreso_requisicion)->exists();
+        if ($deMantenimiento) {
             $this->validarPartidasMantenimiento($validated['filas'] ?? []);
+            $this->validarPreciosMantenimiento($validated['filas'] ?? []);
         }
 
-        [$filasCalculadas, $totales] = $this->calcularFilas($this->filasDeCaptura($validated), (bool) ($validated['incluye_iva'] ?? false));
+        [$filasCalculadas, $totales] = $this->calcularFilas($this->filasDeCaptura($validated, $deMantenimiento), (bool) ($validated['incluye_iva'] ?? false));
 
         DB::transaction(function () use ($requisicion, $validated, $filasCalculadas, $totales) {
             $requisicion->update([
@@ -1159,7 +1189,9 @@ class RequisicionController extends Controller
     public function validarSuficiencia(Request $request, EgresoRequisicion $requisicion): JsonResponse
     {
         // Sin factura (apoyo) no pasa por cotización: se valida en cuanto está aprobada (3).
-        $estadoValido = $requisicion->sin_factura ? 3 : 6;
+        // Mantenimiento aprobado con los precios del taller: también desde aprobada; si se fue a cotizar, desde ahí.
+        $deTaller = VehiculoMantenimiento::where('id_tb_egreso_requisicion', $requisicion->id_tb_egreso_requisicion)->exists();
+        $estadoValido = $requisicion->sin_factura || ($deTaller && (int) $requisicion->id_cat_egreso_requisicion_estado === 3) ? 3 : 6;
         if ((int) $requisicion->id_cat_egreso_requisicion_estado !== $estadoValido || $requisicion->suficiencia === true) {
             return $this->error($requisicion->sin_factura
                 ? 'La suficiencia de un apoyo sin factura se valida cuando la requisición está aprobada y aún no la tiene.'
