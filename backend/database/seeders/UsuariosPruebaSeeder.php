@@ -6,8 +6,6 @@ use App\Models\EgresoUnidadAdministrativa;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
-use Spatie\Permission\Models\Role;
-use Spatie\Permission\PermissionRegistrar;
 
 /**
  * Usuarios de prueba para desarrollo local. No correr en producción. Requiere las migraciones aplicadas.
@@ -25,23 +23,12 @@ use Spatie\Permission\PermissionRegistrar;
  */
 class UsuariosPruebaSeeder extends Seeder
 {
-    /** Las migraciones solo asignan permisos a roles existentes; aquí se crean los que falten. */
-    private const ROLES = [
-        'Área solicitante' => ['servicios-index', 'servicios-create', 'fondos-index', 'fondos-create', 'combustible-index', 'combustible-create', 'contratos-index', 'contratos-create'],
-        'Recursos Materiales' => ['servicios-index', 'servicios-validar', 'combustible-index', 'combustible-validar', 'contratos-index', 'contratos-autorizar', 'padron-index'],
-        // También puede llenar la bitácora de una secretaría que se lo pida (create sin cargar solo ve la suya).
-        'Control de combustible' => ['combustible-index', 'combustible-cargar', 'combustible-create'],
-        'Órgano Interno de Control' => ['padron-index', 'padron-gestionar'],
-    ];
-
     public function run(): void
     {
         abort_if(app()->isProduction(), 403, 'Seeder solo para desarrollo.');
 
-        foreach (self::ROLES as $rol => $permisos) {
-            Role::findOrCreate($rol, 'web')->givePermissionTo($permisos);
-        }
-        app(PermissionRegistrar::class)->forgetCachedPermissions();
+        // Los roles y sus permisos son los del sistema (también en producción).
+        $this->call(RolesSistemaSeeder::class);
 
         $usuarios = [
             'admin.prueba@sieg.test' => ['name' => 'ADMIN DE PRUEBA', 'rol' => 'Super Admin'],

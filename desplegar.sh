@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# Despliega SIEG a producción por SSH: respaldo de la base, código de main, dependencias, migraciones, cachés y
-# el build del frontend. Se detiene en el primer error; si algo falla con el sitio en mantenimiento, lo vuelve a
+# Despliega SIEG a producción por SSH: respaldo de la base, código de main, dependencias, migraciones, permisos y
+# roles, cachés y el build del frontend. Se detiene en el primer error; si algo falla con el sitio en mantenimiento, lo vuelve a
 # levantar y dice dónde quedó el respaldo.
 #
 # Uso (los datos del servidor van en variables, no en el repo):
@@ -83,6 +83,12 @@ ${COMPOSER} install --no-dev --optimize-autoloader --no-interaction
 
 echo "▶ Migraciones"
 ${PHP} artisan migrate --force
+
+echo "▶ Permisos y roles"
+# Permisos de todos los módulos (Super Admin y Admin, todos) y roles de los módulos nuevos (solo agrega).
+${PHP} artisan permissions:sync
+${PHP} artisan db:seed --class=RolesSistemaSeeder --force
+${PHP} artisan permission:cache-reset
 
 echo "▶ Cachés"
 ${PHP} artisan optimize:clear
