@@ -9,24 +9,24 @@
       </h5>
       <div class="d-flex flex-wrap gap-1">
         @if (puede().imprimirOrden) {
-          <button type="button" class="btn btn-sm btn-outline-secondary" (click)="imprimir()" appAccion="Imprimir orden" icono="printer"></button>
+          <button type="button" class="btn btn-sm btn-outline-secondary" (click)="imprimir()" [conNombre]="true" appAccion="Imprimir orden" icono="printer"></button>
         }
         @if (puede().verAlmacen) {
-          <a [routerLink]="['/almacen', o.id]" class="btn btn-sm btn-outline-primary" appAccion="Ver en almacén" icono="shop"></a>
+          <a [routerLink]="['/almacen', o.id]" class="btn btn-sm btn-outline-primary" [conNombre]="true" appAccion="Ver en almacén" icono="shop"></a>
         } @else if (o.almacen_asignada_at) {
           <span class="badge bg-light-secondary text-secondary align-self-center">Asignada al almacén</span>
         }
         @if (puede().cambiarProveedor) {
-          <button type="button" class="btn btn-sm btn-outline-primary" (click)="abrir('proveedor')" appAccion="Cambiar proveedor" icono="user-switch"></button>
+          <button type="button" class="btn btn-sm btn-outline-primary" (click)="abrir('proveedor')" [conNombre]="true" appAccion="Cambiar proveedor" icono="user-switch"></button>
         }
         @if (puede().cambiarFechaOrden) {
-          <button type="button" class="btn btn-sm btn-outline-secondary" (click)="abrir('fecha')" appAccion="Cambiar fecha" icono="calendar"></button>
+          <button type="button" class="btn btn-sm btn-outline-secondary" (click)="abrir('fecha')" [conNombre]="true" appAccion="Cambiar fecha" icono="calendar"></button>
         }
         @if (puede().refacturar) {
-          <button type="button" class="btn btn-sm btn-outline-warning" (click)="abrir('refacturar')" appAccion="Refacturar" icono="sync"></button>
+          <button type="button" class="btn btn-sm btn-outline-warning" (click)="abrir('refacturar')" [conNombre]="true" appAccion="Refacturar" icono="sync"></button>
         }
         @if (puede().cancelarOrden) {
-          <button type="button" class="btn btn-sm btn-outline-danger" (click)="abrir('cancelar')" appAccion="Cancelar orden" icono="stop"></button>
+          <button type="button" class="btn btn-sm btn-outline-danger" (click)="abrir('cancelar')" [conNombre]="true" appAccion="Cancelar orden" icono="stop"></button>
         }
       </div>
     </div>
@@ -79,16 +79,16 @@
                 type="button"
                 class="btn btn-sm btn-outline-primary"
                 [disabled]="ocupado()"
-                [appAccion]="ocupado() ? 'Consultando en el SAT…' : 'Verificar en el SAT'"
+                [conNombre]="true" [appAccion]="ocupado() ? 'Consultando en el SAT…' : 'Verificar en el SAT'"
                 icono="safety-certificate"
                 (click)="verificarSat()"
               ></button>
             }
             @if (puede().descargarXml) {
-              <button type="button" class="btn btn-sm btn-outline-secondary" (click)="descargarXml()" appAccion="Descargar XML" icono="download"></button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" (click)="descargarXml()" [conNombre]="true" appAccion="Descargar XML" icono="download"></button>
             }
             @if (x.pdf) {
-              <button type="button" class="btn btn-sm btn-outline-secondary" (click)="descargarPdfFactura()" appAccion="Ver PDF" icono="file-pdf"></button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" (click)="descargarPdfFactura()" [conNombre]="true" appAccion="Ver PDF" icono="file-pdf"></button>
             }
             @if (puede().cargarPdf) {
               <label class="btn btn-sm mb-0" [class.btn-outline-primary]="!x.pdf" [class.btn-outline-secondary]="x.pdf" [class.disabled]="ocupado()">
@@ -129,10 +129,10 @@
           </h6>
           <div class="d-flex flex-wrap gap-1">
             @if (puede().imprimirClc) {
-              <button type="button" class="btn btn-sm btn-outline-secondary" (click)="imprimirClc()" appAccion="Imprimir CLC" icono="file-pdf"></button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" (click)="imprimirClc()" [conNombre]="true" appAccion="Imprimir CLC" icono="file-pdf"></button>
             }
             @if (puede().cancelarClc) {
-              <button type="button" class="btn btn-sm btn-outline-danger" (click)="abrir('cancelarClc')" appAccion="Cancelar CLC" icono="close-circle"></button>
+              <button type="button" class="btn btn-sm btn-outline-danger" (click)="abrir('cancelarClc')" [conNombre]="true" appAccion="Cancelar CLC" icono="close-circle"></button>
             }
           </div>
         </div>
@@ -176,7 +176,7 @@
       } @else if (puede().generarClc) {
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-3 p-2 border rounded">
           <span class="small">Factura aceptada: sigue generar la CLC para solicitar el pago al proveedor.</span>
-          <button type="button" class="btn btn-sm btn-primary" (click)="abrir('generarClc')" appAccion="Generar CLC" icono="file-done"></button>
+          <button type="button" class="btn btn-sm btn-primary" (click)="abrir('generarClc')" [conNombre]="true" appAccion="Generar CLC" icono="file-done"></button>
         </div>
       }
 

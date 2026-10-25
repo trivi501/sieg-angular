@@ -77,11 +77,11 @@
             type="button"
             class="btn btn-primary"
             [disabled]="r.extemporanea_pendiente"
-            [title]="r.extemporanea_pendiente ? 'Extemporánea: falta la autorización de la Subdirección Administrativa' : ''"
+            [ayuda]="r.extemporanea_pendiente ? 'Extemporánea: falta la autorización de la Subdirección Administrativa' : ''"
             (click)="abrir('enviar')"
-          >
-            Enviar a revisión
-          </button>
+            appAccion="Enviar a revisión"
+            icono="send"
+          ></button>
         }
         @if (d.puede.validar) {
           <button type="button" class="btn btn-primary" (click)="abrir('aprobar')" appAccion="Válida" icono="check"></button>
@@ -104,11 +104,11 @@
             type="button"
             class="btn btn-primary"
             [disabled]="!(r.total > 0)"
-            [title]="r.total > 0 ? '' : 'Primero captura los precios de la cotización'"
+            [ayuda]="r.total > 0 ? '' : 'Primero captura los precios de la cotización'"
             (click)="abrir('suficiencia')"
-          >
-            Validar suficiencia presupuestal
-          </button>
+            appAccion="Validar suficiencia presupuestal"
+            icono="safety-certificate"
+          ></button>
         }
         @if (d.puede.generarClcSinFactura) {
           <button type="button" class="btn btn-primary" (click)="abrir('clcApoyo')" appAccion="Generar CLC del apoyo" icono="file-done"></button>
