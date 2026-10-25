@@ -1,0 +1,10 @@
+{
+  "name": "sieg-manuales",
+  "private": true,
+  "description": "Capturas de pantalla y manuales de SIEG en Word",
+  "dependencies": {
+    "docx": "9.5.1",
+    "mammoth": "1.8.0",
+    "puppeteer-core": "23.11.1"
+  }
+}
