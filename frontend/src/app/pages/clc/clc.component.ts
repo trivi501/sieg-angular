@@ -10,6 +10,7 @@ import { erroresDe } from 'src/app/core/api';
 import { money } from 'src/app/core/formato';
 import { abrirBlob } from '../requisiciones/requisiciones.service';
 import { BANDEJAS, Clc, ClcService, Grupo, TramiteClc, claseEstadoClc } from './clc.service';
+import { CuentaTesoreria, TesoreriaService } from '../tesoreria/tesoreria.service';
 import { AccionComponent } from 'src/app/shared/accion.component';
 import { SelectBusquedaDirective } from 'src/app/shared/select-busqueda.directive';
 
@@ -36,6 +37,7 @@ import { SelectBusquedaDirective } from 'src/app/shared/select-busqueda.directiv
 })
 export class ClcComponent {
   private servicio = inject(ClcService);
+  private tesoreria = inject(TesoreriaService);
   private auth = inject(AuthService);
   private modal = inject(NgbModal);
 
@@ -70,6 +72,11 @@ export class ClcComponent {
   seleccion = signal<Record<string, number[]>>({});
   buscar = signal('');
   filtroEstado = signal('');
+  /** Reporte de CLC en Excel (pestaña Seguimiento). */
+  excelDesde = '';
+  excelHasta = '';
+  excelCanceladas = false;
+  exportando = signal(false);
 
   // Diálogo de acción
   accion = signal<{ clave: string; grupo: Grupo; ids: number[] } | null>(null);
@@ -77,6 +84,9 @@ export class ClcComponent {
   pagoFecha = '';
   pagoForma = 'transferencia';
   pagoReferencia = '';
+  /** Pago: cuenta del Ayuntamiento de la que sale (Tesorería agrupa por proveedor). */
+  cuentaId: number | null = null;
+  cuentas = signal<CuentaTesoreria[]>([]);
   errores = signal<Record<string, string>>({});
   ocupado = signal(false);
 
@@ -162,6 +172,12 @@ export class ClcComponent {
     this.pagoForma = 'transferencia';
     this.pagoReferencia = '';
     this.errores.set({});
+    if (this.datos()?.acciones[clave]?.pago) {
+      this.tesoreria.cuentas().subscribe((c) => {
+        this.cuentas.set(c);
+        this.cuentaId = c.length === 1 ? c[0].id : this.cuentaId;
+      });
+    }
     this.modal.open(this.tplAccion(), { size: 'md' });
   }
 
@@ -178,7 +194,7 @@ export class ClcComponent {
         accion: a.clave,
         ordenes: a.ids,
         observaciones: this.observaciones || undefined,
-        ...(config.pago ? { pago_fecha: this.pagoFecha, pago_forma: this.pagoForma, pago_referencia: this.pagoReferencia } : {})
+        ...(config.pago ? { pago_fecha: this.pagoFecha, pago_forma: this.pagoForma, pago_referencia: this.pagoReferencia, cuenta_id: this.cuentaId } : {})
       })
       .subscribe({
         next: (r) => {
@@ -193,6 +209,24 @@ export class ClcComponent {
           this.ocupado.set(false);
           const { campos, mensaje } = erroresDe(e);
           this.errores.set(mensaje ? { _general: mensaje, ...campos } : campos);
+        }
+      });
+  }
+
+  // --- Excel ---
+
+  exportarExcel(): void {
+    this.exportando.set(true);
+    this.servicio
+      .excel({ estado: this.filtroEstado(), buscar: this.buscar().trim(), desde: this.excelDesde, hasta: this.excelHasta, canceladas: this.excelCanceladas ? 1 : '' })
+      .subscribe({
+        next: (b) => {
+          this.exportando.set(false);
+          abrirBlob(b, 'clc.xlsx', true);
+        },
+        error: () => {
+          this.exportando.set(false);
+          this.mensaje.set({ tipo: 'danger', texto: 'No se pudo generar el Excel de CLC.' });
         }
       });
   }

@@ -85,6 +85,88 @@ const routes: Routes = [
         data: { permission: 'fondos-index', tipo: 'fondo' },
         loadComponent: () => import('./pages/servicios/servicio-detalle.component').then((c) => c.ServicioDetalleComponent)
       },
+      // Bitácora de combustible: la unidad de combustibles sube los XML y el Excel del proveedor (combustible, lotes);
+      // cada bitácora (una por secretaría) usa las pantallas de servicios (data.tipo = combustible) y cada secretaría
+      // ve las suyas en combustible/bitacoras. Las rutas fijas van antes de combustible/:id.
+      {
+        path: 'combustible',
+        data: { permission: ['combustible-cargar', 'combustible-validar'] },
+        loadComponent: () => import('./pages/combustible/combustible.component').then((c) => c.CombustibleComponent)
+      },
+      {
+        path: 'combustible/lotes/:id',
+        data: { permission: ['combustible-cargar', 'combustible-validar'] },
+        loadComponent: () => import('./pages/combustible/combustible-lote.component').then((c) => c.CombustibleLoteComponent)
+      },
+      {
+        path: 'combustible/reporte',
+        data: { permission: 'combustible-index' },
+        loadComponent: () => import('./pages/combustible/combustible-reporte.component').then((c) => c.CombustibleReporteComponent)
+      },
+      {
+        path: 'combustible/bitacoras',
+        data: { permission: 'combustible-index', tipo: 'combustible' },
+        loadComponent: () => import('./pages/servicios/servicios-lista.component').then((c) => c.ServiciosListaComponent)
+      },
+      {
+        path: 'combustible/:id',
+        data: { permission: 'combustible-index', tipo: 'combustible' },
+        loadComponent: () => import('./pages/servicios/servicio-detalle.component').then((c) => c.ServicioDetalleComponent)
+      },
+      // Arrendamientos y servicios por contrato: cada mes, con el XML, se generan requisición, orden de compra y CLC.
+      {
+        path: 'contratos',
+        data: { permission: 'contratos-index' },
+        loadComponent: () => import('./pages/contratos/contratos-lista.component').then((c) => c.ContratosListaComponent)
+      },
+      {
+        path: 'contratos/:id',
+        data: { permission: 'contratos-index' },
+        loadComponent: () => import('./pages/contratos/contrato-detalle.component').then((c) => c.ContratoDetalleComponent)
+      },
+      // Padrón de proveedores del Órgano Interno de Control: expediente, cédula y alertas.
+      {
+        path: 'padron',
+        data: { permission: 'padron-index' },
+        loadComponent: () => import('./pages/padron/padron-lista.component').then((c) => c.PadronListaComponent)
+      },
+      {
+        path: 'padron/:id',
+        data: { permission: 'padron-index' },
+        loadComponent: () => import('./pages/padron/padron-ficha.component').then((c) => c.PadronFichaComponent)
+      },
+      // Contabilidad: reporte mensual del ISR retenido.
+      {
+        path: 'contabilidad/isr',
+        data: { permission: 'contabilidad-isr' },
+        loadComponent: () => import('./pages/contabilidad/isr.component').then((c) => c.IsrComponent)
+      },
+      // Tesorería: mesa de control de pagos (Egresos), pagos agrupados por proveedor, conciliación y reportes.
+      {
+        path: 'tesoreria',
+        data: { permission: 'tesoreria-index' },
+        loadComponent: () => import('./pages/tesoreria/tesoreria-mesa.component').then((c) => c.TesoreriaMesaComponent)
+      },
+      {
+        path: 'tesoreria/pagos',
+        data: { permission: 'tesoreria-index' },
+        loadComponent: () => import('./pages/tesoreria/tesoreria-pagos.component').then((c) => c.TesoreriaPagosComponent)
+      },
+      {
+        path: 'tesoreria/pagos/:id',
+        data: { permission: 'tesoreria-index' },
+        loadComponent: () => import('./pages/tesoreria/tesoreria-pago.component').then((c) => c.TesoreriaPagoComponent)
+      },
+      {
+        path: 'tesoreria/movimientos',
+        data: { permission: 'tesoreria-index' },
+        loadComponent: () => import('./pages/tesoreria/tesoreria-movimientos.component').then((c) => c.TesoreriaMovimientosComponent)
+      },
+      {
+        path: 'tesoreria/reportes',
+        data: { permission: 'tesoreria-index' },
+        loadComponent: () => import('./pages/tesoreria/tesoreria-reportes.component').then((c) => c.TesoreriaReportesComponent)
+      },
       // Almacén conforme a la orden de compra.
       {
         path: 'almacen',

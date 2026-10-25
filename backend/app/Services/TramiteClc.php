@@ -164,7 +164,7 @@ final class TramiteClc
      * Ejecuta la acción sobre las CLC (ids de ordenes_compra). Devuelve la relación creada si fue un envío.
      *
      * @param  array<int>  $ids
-     * @param  array{observaciones?: string|null, pago_fecha?: string, pago_forma?: string, pago_referencia?: string}  $datos
+     * @param  array{observaciones?: string|null, pago_fecha?: string, pago_forma?: string, pago_referencia?: string, cuenta_id?: int|null}  $datos
      */
     public function ejecutar(string $accion, array $ids, User $user, array $datos = []): ?ClcRelacion
     {
@@ -177,7 +177,10 @@ final class TramiteClc
             throw ValidationException::withMessages(['observaciones' => 'Escribe las observaciones de la devolución.']);
         }
         if ($config['pago'] ?? false) {
-            $this->verificarFacturasEnSat($ids);
+            // Tesorería: un pago por beneficiario, de una cuenta del Ayuntamiento, con verificación en el SAT.
+            app(TesoreriaPagos::class)->pagar($ids, $user, $datos);
+
+            return null;
         }
 
         return DB::transaction(function () use ($accion, $config, $ids, $user, $datos) {
@@ -215,44 +218,13 @@ final class TramiteClc
                     // Envío sin documento (RM → CP, CP → Egresos): ya no hay relación pendiente de recibir.
                     $cambios['clc_relacion_id'] = $relacion?->id;
                 }
-                if ($config['pago'] ?? false) {
-                    $cambios += $this->datosPago($orden, $datos, $user);
-                }
                 $orden->update($cambios);
 
                 $this->movimiento($orden, $accion, $anterior, $config['a'], $relacion?->id ?? (($config['recibe'] ?? false) ? $orden->clc_relacion_id : null), $datos['observaciones'] ?? null, $user);
-
-                if ($config['pago'] ?? false) {
-                    $this->pagarRequisicion($orden, $user);
-                }
             }
 
             return $relacion;
         });
-    }
-
-    /**
-     * Antes de pagar se vuelve a consultar cada factura en el SAT (fuera de la transacción: es una llamada
-     * externa). Una cancelada o no encontrada detiene el pago; si el SAT no responde, se deja pagar.
-     *
-     * @param  array<int>  $ids
-     */
-    private function verificarFacturasEnSat(array $ids): void
-    {
-        $sat = app(EstadoCfdiSat::class);
-        $errores = [];
-
-        foreach (OrdenCompra::whereIn('id', $ids)->whereNotNull('xml_uuid')->get() as $orden) {
-            $estado = $sat->consultarOrden($orden);
-            EstadoCfdiSat::guardar($orden, $estado);
-            if ($estado && ($error = EstadoCfdiSat::error($estado, $orden->xml_uuid))) {
-                $errores[] = "{$orden->clc_folio_completo}: {$error}";
-            }
-        }
-
-        if ($errores) {
-            throw ValidationException::withMessages(['ordenes' => 'No se puede pagar. '.implode(' ', $errores)]);
-        }
     }
 
     /** El área solo envía las CLC de su secretaría o dirección (Admin, todas). */
@@ -289,58 +261,8 @@ final class TramiteClc
         return $relacion;
     }
 
-    private function datosPago(OrdenCompra $orden, array $datos, User $user): array
-    {
-        $fecha = $datos['pago_fecha'] ?? null;
-        $errores = [];
-        if (! $fecha || ! strtotime($fecha)) {
-            $errores['pago_fecha'] = 'Indica la fecha de pago.';
-        } elseif ($fecha > now('America/Mexico_City')->toDateString()) {
-            $errores['pago_fecha'] = 'La fecha de pago no puede ser futura.';
-        } elseif ($orden->fecha && $fecha < $orden->fecha->toDateString()) {
-            $errores['pago_fecha'] = "La fecha de pago no puede ser anterior a la orden {$orden->folio_completo}.";
-        }
-        if (! array_key_exists($datos['pago_forma'] ?? '', OrdenCompra::FORMAS_PAGO)) {
-            $errores['pago_forma'] = 'Indica la forma de pago.';
-        }
-        // La transferencia lleva su número automático; el cheque, su número capturado.
-        $esTransferencia = ($datos['pago_forma'] ?? null) === 'transferencia';
-        if (! $esTransferencia && blank($datos['pago_referencia'] ?? null)) {
-            $errores['pago_referencia'] = 'Indica el número de cheque.';
-        }
-        if ($errores) {
-            throw ValidationException::withMessages($errores);
-        }
-
-        $referencia = trim((string) ($datos['pago_referencia'] ?? ''));
-
-        return [
-            'pago_fecha' => $fecha,
-            'pago_forma' => $datos['pago_forma'],
-            'pago_referencia' => $referencia === '' ? null : mb_substr($referencia, 0, 100),
-            'pago_user_id' => $user->id,
-            'pago_registrado_at' => now(),
-            ...($esTransferencia ? $this->numeroTransferencia((int) substr($fecha, 0, 4)) : []),
-        ];
-    }
-
-    /**
-     * Siguiente número de transferencia del año del pago (TRF-2026-0001), para la posición bancaria.
-     * Se calcula dentro de la transacción del pago con bloqueo, así que dos pagos no repiten número.
-     */
-    private function numeroTransferencia(int $año): array
-    {
-        $folio = (OrdenCompra::where('transferencia_año', $año)->lockForUpdate()->max('transferencia_folio') ?? 0) + 1;
-
-        return [
-            'transferencia_folio' => $folio,
-            'transferencia_año' => $año,
-            'transferencia_numero' => sprintf('TRF-%d-%04d', $año, $folio),
-        ];
-    }
-
     /** Con el pago la requisición queda Pagada y el importe pasa de devengado a pagado. */
-    private function pagarRequisicion(OrdenCompra $orden, User $user): void
+    public function pagarRequisicion(OrdenCompra $orden, User $user): void
     {
         $requisicion = $orden->requisicion;
         if (! $requisicion) {
@@ -363,7 +285,7 @@ final class TramiteClc
         ]);
     }
 
-    private function movimiento(OrdenCompra $orden, string $accion, ?string $anterior, string $nuevo, ?int $relacionId, ?string $observaciones, User $user): void
+    public function movimiento(OrdenCompra $orden, string $accion, ?string $anterior, string $nuevo, ?int $relacionId, ?string $observaciones, User $user): void
     {
         ClcMovimiento::create([
             'orden_compra_id' => $orden->id,

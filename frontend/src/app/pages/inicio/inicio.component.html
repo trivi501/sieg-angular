@@ -9,11 +9,7 @@
   @case (undefined) {
     <p class="text-muted">Cargando…</p>
   }
-  @case (null) {
-    <div class="card">
-      <div class="card-body text-muted">No tienes acceso a requisiciones ni presupuesto.</div>
-    </div>
-  }
+  @case (null) {}
   @default {
     @let r = resumen()!;
     @if (r.verPresupuesto) {
@@ -53,4 +49,141 @@
       }
     </div>
   }
+}
+
+@if (panel(); as p) {
+  <div class="row g-3 mt-1">
+    @if (p.clc; as c) {
+      <div class="col-lg-6">
+        <div class="card h-100 mb-0">
+          <div class="card-header d-flex justify-content-between">
+            <h6 class="mb-0">CLC y facturas pendientes</h6>
+            <a routerLink="/clc" class="small">Trámite de CLC</a>
+          </div>
+          <div class="card-body small">
+            <div class="row g-2 mb-2">
+              <div class="col-6">
+                <span class="text-muted d-block">CLC en trámite</span>
+                <b class="fs-6">{{ c.en_tramite.cantidad }}</b>
+                · {{ money(c.en_tramite.importe) }}
+              </div>
+              <div class="col-6">
+                <span class="text-muted d-block">Facturas sin CLC</span>
+                <b class="fs-6">{{ c.facturas_sin_clc.cantidad }}</b>
+                · {{ money(c.facturas_sin_clc.importe) }}
+              </div>
+            </div>
+            @for (a of c.por_area; track a.area) {
+              <div class="d-flex justify-content-between border-bottom py-1">
+                <span>{{ a.nombre }}</span>
+                <span>{{ a.cantidad }} · {{ money(a.importe) }}</span>
+              </div>
+            }
+            @for (t of c.tramites_por_validar; track t.tipo) {
+              <div class="text-warning mt-1">{{ t.cantidad }} {{ t.nombre }} por validar</div>
+            }
+          </div>
+        </div>
+      </div>
+    }
+    @if (p.pagos; as g) {
+      <div class="col-lg-6">
+        <div class="card h-100 mb-0">
+          <div class="card-header d-flex justify-content-between">
+            <h6 class="mb-0">Pagos y pasivos</h6>
+            <a routerLink="/tesoreria" class="small">Mesa de control</a>
+          </div>
+          <div class="card-body small row g-2">
+            <div class="col-6">
+              <span class="text-muted d-block">Pagado en {{ g.mes.nombre }}</span>
+              <b class="fs-6">{{ money(g.mes.importe) }}</b>
+              ({{ g.mes.cantidad }} CLC)
+            </div>
+            <div class="col-6">
+              <span class="text-muted d-block">Pagado en {{ g['año']['año'] }}</span>
+              <b class="fs-6">{{ money(g['año'].importe) }}</b>
+              ({{ g['año'].cantidad }} CLC)
+            </div>
+            <div class="col-6">
+              <span class="text-muted d-block">Pasivo acumulado</span>
+              <b class="fs-6 text-danger">{{ money(g.pasivo.total) }}</b>
+            </div>
+            <div class="col-6 text-muted">
+              CLC por pagar {{ money(g.pasivo.clc_por_pagar) }}
+              <br />
+              Facturas sin CLC {{ money(g.pasivo.facturas_sin_clc) }}
+            </div>
+            @if (g.en_transito; as t) {
+              <div class="col-12 text-muted">{{ t.cantidad }} pago(s) en tránsito sin conciliar · {{ money(t.importe) }}</div>
+            }
+          </div>
+        </div>
+      </div>
+    }
+    @if (p.combustible; as b) {
+      <div class="col-lg-6">
+        <div class="card h-100 mb-0">
+          <div class="card-header d-flex justify-content-between">
+            <h6 class="mb-0">Combustible {{ b['año']['año'] }}</h6>
+            <a routerLink="/combustible/reporte" class="small">Consumo</a>
+          </div>
+          <div class="card-body small">
+            <div class="row g-2 mb-2">
+              <div class="col-6">
+                <span class="text-muted d-block">Año</span>
+                <b class="fs-6">{{ money(b['año'].importe) }}</b>
+                · {{ litros(b['año'].litros) }} L
+              </div>
+              <div class="col-6">
+                <span class="text-muted d-block">{{ b.mes.nombre }}</span>
+                <b class="fs-6">{{ money(b.mes.importe) }}</b>
+                · {{ litros(b.mes.litros) }} L
+              </div>
+            </div>
+            @for (s of b.secretarias; track s.secretaria) {
+              <div class="d-flex justify-content-between border-bottom py-1">
+                <span class="text-truncate me-2">{{ s.secretaria }}</span>
+                <span class="text-nowrap">{{ money(s.importe) }}</span>
+              </div>
+            }
+            @if (b.bitacoras_pendientes) {
+              <div class="text-warning mt-1">{{ b.bitacoras_pendientes }} bitácora(s) sin validar</div>
+            }
+          </div>
+        </div>
+      </div>
+    }
+    @if (p.mantenimiento; as m) {
+      <div class="col-lg-6">
+        <div class="card h-100 mb-0">
+          <div class="card-header d-flex justify-content-between">
+            <h6 class="mb-0">Mantenimiento vehicular {{ m['año'] }}</h6>
+            <a routerLink="/vehiculos/mantenimientos" class="small">Taller</a>
+          </div>
+          <div class="card-body small">
+            <div class="row g-2 mb-2">
+              <div class="col-4">
+                <span class="text-muted d-block">Servicios</span>
+                <b class="fs-6">{{ m.servicios }}</b>
+              </div>
+              <div class="col-4">
+                <span class="text-muted d-block">En taller</span>
+                <b class="fs-6">{{ m.en_taller }}</b>
+              </div>
+              <div class="col-4">
+                <span class="text-muted d-block">Costo</span>
+                <b class="fs-6">{{ money(m.costo) }}</b>
+              </div>
+            </div>
+            @for (s of m.secretarias; track s.secretaria) {
+              <div class="d-flex justify-content-between border-bottom py-1">
+                <span class="text-truncate me-2">{{ s.secretaria }} ({{ s.servicios }})</span>
+                <span class="text-nowrap">{{ money(s.costo) }}</span>
+              </div>
+            }
+          </div>
+        </div>
+      </div>
+    }
+  </div>
 }

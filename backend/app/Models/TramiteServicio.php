@@ -22,10 +22,16 @@ class TramiteServicio extends Model
         'cancelado' => 'Cancelado',
     ];
 
-    /** Tipos: trámite de servicios (un proveedor, con orden de compra) o fondo revolvente (varios proveedores, a favor de un trabajador). */
+    /**
+     * Tipos: trámite de servicios (un proveedor, con orden de compra), fondo revolvente (varios proveedores, a favor
+     * de un trabajador) o bitácora de combustible (como un servicio, pero se crea desde el Excel del proveedor y
+     * lleva sus tickets) o mensualidad de contrato (como un servicio; la genera el contrato con el XML del mes).
+     */
     public const TIPOS = [
         'servicio' => ['prefijo' => 'TS', 'permiso' => 'servicios', 'nombre' => 'Trámite de servicios'],
         'fondo' => ['prefijo' => 'FR', 'permiso' => 'fondos', 'nombre' => 'Fondo revolvente'],
+        'combustible' => ['prefijo' => 'BC', 'permiso' => 'combustible', 'nombre' => 'Bitácora de combustible'],
+        'contrato' => ['prefijo' => 'TC', 'permiso' => 'contratos', 'nombre' => 'Mensualidad de contrato'],
     ];
 
     /** Monto máximo de cada factura de un fondo revolvente (Total del CFDI). */
@@ -37,7 +43,7 @@ class TramiteServicio extends Model
     protected $table = 'tramites_servicio';
 
     protected $fillable = [
-        'tipo', 'trabajador_nombre', 'trabajador_numero', 'trabajador_puesto',
+        'tipo', 'combustible_lote_id', 'contrato_id', 'trabajador_nombre', 'trabajador_numero', 'trabajador_puesto',
         'folio', 'año', 'folio_completo', 'id_cat_egreso_unidad_administrativa', 'concepto', 'proveedor_rfc', 'proveedor_nombre',
         'estado', 'observaciones', 'user_id', 'enviado_at', 'validado_at', 'validado_user_id', 'id_tb_egreso_requisicion',
     ];
@@ -65,6 +71,23 @@ class TramiteServicio extends Model
     public function ordenCompra()
     {
         return $this->hasOne(OrdenCompra::class, 'tramite_servicio_id');
+    }
+
+    /** Bitácora de combustible: la carga del Excel de la que salió y sus tickets. */
+    public function lote()
+    {
+        return $this->belongsTo(CombustibleLote::class, 'combustible_lote_id');
+    }
+
+    /** Mensualidad de contrato: el contrato del que salió. */
+    public function contrato()
+    {
+        return $this->belongsTo(Contrato::class);
+    }
+
+    public function cargas()
+    {
+        return $this->hasMany(CombustibleCarga::class, 'tramite_servicio_id')->orderBy('fila');
     }
 
     public function usuario()
@@ -105,6 +128,16 @@ class TramiteServicio extends Model
     public function esFondo(): bool
     {
         return $this->tipo === 'fondo';
+    }
+
+    public function esCombustible(): bool
+    {
+        return $this->tipo === 'combustible';
+    }
+
+    public function nombreTipo(): string
+    {
+        return self::TIPOS[$this->tipo]['nombre'] ?? 'Trámite';
     }
 
     /** Prefijo de los permisos del tipo: servicios-* o fondos-*. */

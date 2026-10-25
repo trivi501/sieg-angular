@@ -15,7 +15,9 @@ use App\Models\EjercicioFiscal;
 use App\Models\Firmante;
 use App\Models\Proveedor;
 use App\Models\ProveedorCuenta;
+use App\Models\PresupuestoEgreso;
 use App\Models\Regidor;
+use App\Models\TesoreriaCuenta;
 use App\Models\TipoDocumento;
 use App\Models\User;
 use App\Models\Vehiculo;
@@ -342,8 +344,11 @@ final class Catalogos
                         ->ayuda('Si se deja vacío, se toma de los 3 primeros dígitos de la CLABE.'),
                     Campo::texto('clabe', 'CLABE')->max(18)->unico()->regex('/^\d{18}$/', 'La CLABE debe tener 18 dígitos.'),
                     Campo::texto('cuenta_bancaria', 'Número de cuenta')->max(20)->regex('/^\d+$/', 'El número de cuenta solo lleva dígitos.'),
-                    Campo::fecha('vigencia', 'Vigencia')
-                        ->ayuda('Hasta qué fecha está vigente en el padrón de proveedores. Vencida, no se le asigna orden de compra. Vacía, no vence.'),
+                    Campo::booleano('compra_unica', 'Compra única (eventual)', false)
+                        ->ayuda('Proveedor de una sola compra: se identifica aparte en el padrón y no lleva cédula. El alta desde la orden de compra lo marca así.'),
+                    // La vigencia la da la cédula que emite el Órgano Interno de Control (Padrón de proveedores); aquí solo se ve.
+                    Campo::calculado('padron', 'Padrón (OIC)', fn (Proveedor $p) => Proveedor::ESTADOS_PADRON[$p->estadoPadron()]
+                        .($p->vigencia && ! $p->compra_unica ? ' · vence '.$p->vigencia->format('d/m/Y') : '')),
                     Campo::activo(),
                 ],
                 buscar: ['nombre', 'rfc', 'clabe', 'cuenta_bancaria'],
@@ -428,6 +433,37 @@ final class Catalogos
                 ],
                 buscar: ['clave', 'descripcion'],
                 orden: ['descripcion' => 'asc'],
+            ),
+            new Catalogo(
+                slug: 'tesoreria-cuentas',
+                titulo: 'Cuentas bancarias del Ayuntamiento',
+                singular: 'cuenta bancaria',
+                grupo: 'Proveedores y bancos',
+                descripcion: 'Cuentas de las que Tesorería paga las CLC. La fuente de financiamiento y el saldo inicial son para la posición bancaria (saldo inicial + abonos − cargos del estado de cuenta).',
+                modelo: TesoreriaCuenta::class,
+                campos: [
+                    Campo::texto('nombre', 'Nombre de la cuenta')->requerido()->max(200)->mayusculas(),
+                    Campo::relacion('id_cat_banco', 'Banco', Banco::class, ['clave', 'descripcion'], 'clave'),
+                    Campo::texto('numero', 'Número de cuenta')->max(30),
+                    Campo::texto('clabe', 'CLABE')->max(18)->unico()->regex('/^\d{18}$/', 'La CLABE debe tener 18 dígitos.'),
+                    Campo::texto('fuente', 'Fuente de financiamiento (clave)')->max(20)
+                        ->ayuda('La clave de la fuente como en el presupuesto, p. ej. 111.'),
+                    Campo::texto('saldo_inicial', 'Saldo inicial')->max(20)->regex('/^-?\d+(\.\d{1,2})?$/', 'El saldo inicial es un importe, p. ej. 150000.00.')->porDefecto('0'),
+                    Campo::fecha('fecha_saldo_inicial', 'Fecha del saldo inicial'),
+                    Campo::activo(),
+                ],
+                buscar: ['nombre', 'numero', 'clabe', 'fuente'],
+                llave: ['nombre'],
+                validar: function (array $datos) {
+                    // La fuente debe existir en el catálogo de fuentes o en el presupuesto (CLAVE3).
+                    $fuente = trim((string) ($datos['fuente'] ?? ''));
+                    if ($fuente !== '' && ! EgresoFuenteFinanciamiento::where('clave', $fuente)->exists()
+                        && ! PresupuestoEgreso::whereRaw('TRIM(CLAVE3) = ?', [$fuente])->exists()) {
+                        return ['fuente' => 'Esa fuente de financiamiento no existe en el catálogo de fuentes ni en el presupuesto.'];
+                    }
+
+                    return [];
+                },
             ),
 
             // Padrón vehicular

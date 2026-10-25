@@ -17,7 +17,7 @@ class OrdenCompra extends Model
         'xml_serie', 'xml_folio', 'xml_fecha', 'xml_subtotal', 'xml_total', 'xml_isr', 'xml_cargado_at', 'xml_user_id',
         'sat_estado', 'sat_estatus_cancelacion', 'sat_efos', 'sat_verificado_at',
         'pago_fecha', 'pago_forma', 'pago_referencia', 'pago_user_id', 'pago_registrado_at',
-        'transferencia_folio', 'transferencia_año', 'transferencia_numero',
+        'transferencia_folio', 'transferencia_año', 'transferencia_numero', 'tesoreria_pago_id',
         'clc_folio', 'clc_año', 'clc_folio_completo', 'clc_fecha', 'clc_user_id', 'clc_generada_at', 'clc_estado', 'clc_relacion_id',
         'clc_cancelada_at', 'clc_cancelada_user_id', 'clc_motivo_cancelacion', 'cancelada_at', 'cancelada_user_id', 'motivo_cancelacion', 'almacen_asignada_at', 'almacen_asignada_user_id',
     ];
@@ -72,6 +72,12 @@ class OrdenCompra extends Model
     public function proveedor()
     {
         return $this->belongsTo(Proveedor::class);
+    }
+
+    /** Pago de Tesorería que la cubrió (agrupa las CLC de un mismo beneficiario). */
+    public function tesoreriaPago()
+    {
+        return $this->belongsTo(TesoreriaPago::class, 'tesoreria_pago_id');
     }
 
     public function movimientosClc()

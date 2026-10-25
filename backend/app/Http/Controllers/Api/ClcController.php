@@ -6,10 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Models\ClcRelacion;
 use App\Models\EgresoUnidadAdministrativa;
 use App\Models\OrdenCompra;
+use App\Services\ExcelTabla;
 use App\Services\TramiteClc;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 /**
  * Trámite de CLC: bandejas por área para recibir, enviar (relación), devolver y pagar (SIEG: ClcController,
@@ -115,6 +117,7 @@ class ClcController extends Controller
             'pago_fecha' => 'nullable|date',
             'pago_forma' => 'nullable|string',
             'pago_referencia' => 'nullable|string|max:100',
+            'cuenta_id' => 'nullable|integer', // pago: cuenta del Ayuntamiento de la que sale (TesoreriaPagos)
         ], ['ordenes.required' => 'Selecciona al menos una CLC.']);
 
         $relacion = $tramite->ejecutar($validated['accion'], $validated['ordenes'], $request->user(), $validated);
@@ -125,6 +128,81 @@ class ClcController extends Controller
             'message' => $relacion ? "{$mensaje} Relación {$relacion->folio_completo} generada." : $mensaje,
             'relacion' => $relacion ? ['id' => $relacion->id, 'folio' => $relacion->folio_completo] : null,
         ]);
+    }
+
+    /**
+     * Reporte de CLC en Excel con filtros: estado, fechas de la CLC, secretaría, fuente y búsqueda (folio, orden,
+     * requisición, beneficiario o concepto). Cada quien exporta las CLC que puede ver en la pantalla.
+     */
+    public function excel(Request $request)
+    {
+        $f = $request->validate([
+            'estado' => 'nullable|string', 'desde' => 'nullable|date', 'hasta' => 'nullable|date', 'unidad' => 'nullable|integer',
+            'fuente' => 'nullable|string|max:20', 'buscar' => 'nullable|string|max:100', 'canceladas' => 'nullable|boolean',
+        ]);
+        $user = $request->user();
+        $todas = TramiteClc::veTodo($user) || $user->canAny(['clc-recursos-materiales', 'clc-control-presupuestal', 'clc-sindicatura', 'clc-egresos']);
+        $propias = EgresoUnidadAdministrativa::idsMismaClave($user->id_cat_egreso_unidad_administrativa);
+        $estadosBandeja = TramiteClc::estadosDeSusBandejas($user);
+
+        $ordenes = OrdenCompra::query()->whereNotNull('clc_folio_completo')
+            ->when(! $todas, fn ($q) => $q->where(fn ($w) => $w->whereIn('clc_estado', $estadosBandeja ?: ['__ninguno__'])
+                ->orWhereHas('requisicion', fn ($r) => $r->whereIn('id_cat_egreso_unidad_administrativa', $propias ?: [0]))))
+            ->when($f['estado'] ?? null, fn ($q, $v) => $q->where('clc_estado', $v))
+            ->when(! ($f['canceladas'] ?? false) && ($f['estado'] ?? null) !== 'cancelada', fn ($q) => $q->where('clc_estado', '!=', 'cancelada'))
+            ->when($f['desde'] ?? null, fn ($q, $v) => $q->whereDate('clc_fecha', '>=', $v))
+            ->when($f['hasta'] ?? null, fn ($q, $v) => $q->whereDate('clc_fecha', '<=', $v))
+            ->when($f['unidad'] ?? null, fn ($q, $v) => $q->whereHas('requisicion', fn ($r) => $r->whereIn('id_cat_egreso_unidad_administrativa', EgresoUnidadAdministrativa::idsMismaClave((int) $v))))
+            ->when($f['fuente'] ?? null, fn ($q, $v) => $q->whereHas('requisicion.tbEgresoRequisicionDetalles', fn ($d) => $d->whereRaw('TRIM(fuente) = ?', [trim($v)])))
+            ->when(filled($f['buscar'] ?? null), function ($q) use ($f) {
+                $like = '%'.trim($f['buscar']).'%';
+                $q->where(fn ($w) => $w->where('clc_folio_completo', 'like', $like)->orWhere('folio_completo', 'like', $like)
+                    ->orWhereHas('proveedor', fn ($p) => $p->where('nombre', 'like', $like)->orWhere('rfc', 'like', $like))
+                    ->orWhereHas('requisicion', fn ($r) => $r->where('folio_completo', 'like', $like)->orWhere('observaciones', 'like', $like)->orWhere('beneficiario', 'like', $like)));
+            })
+            ->with(['proveedor:id,nombre,rfc', 'requisicion:id_tb_egreso_requisicion,folio_completo,id_cat_egreso_unidad_administrativa,observaciones,beneficiario',
+                'requisicion.catEgresoUnidadAdministrativa:id_cat_egreso_unidad_administrativa,clave,nombre', 'requisicion.tbEgresoRequisicionDetalles:id_tb_egreso_requisicion,fuente,partida',
+                'tramiteServicio:id,folio_completo', 'tesoreriaPago:id,numero'])
+            ->orderBy('clc_año')->orderBy('clc_folio')->get();
+
+        $filas = $ordenes->map(fn (OrdenCompra $o) => [
+            $o->clc_folio_completo,
+            $o->clc_fecha?->format('d/m/Y'),
+            TramiteClc::descripcion($o->clc_estado),
+            trim(($o->requisicion?->catEgresoUnidadAdministrativa?->clave ?? '').' '.($o->requisicion?->catEgresoUnidadAdministrativa?->nombre ?? '')),
+            $o->requisicion?->folio_completo,
+            $o->folio_completo,
+            $o->tramiteServicio?->folio_completo,
+            $o->aFavorDe(),
+            $o->sin_factura ? null : $o->proveedor?->rfc,
+            $o->requisicion?->observaciones,
+            $o->requisicion?->tbEgresoRequisicionDetalles->pluck('fuente')->map(fn ($x) => trim((string) $x))->filter()->unique()->implode(', '),
+            $o->requisicion?->tbEgresoRequisicionDetalles->pluck('partida')->map(fn ($x) => trim((string) $x))->filter()->unique()->implode(', '),
+            (float) $o->importe,
+            (float) ($o->xml_isr ?? 0),
+            $o->netoAPagar(),
+            $o->pago_fecha?->format('d/m/Y'),
+            $o->pago_forma ? (OrdenCompra::FORMAS_PAGO[$o->pago_forma] ?? $o->pago_forma) : null,
+            $o->tesoreriaPago?->numero ?? $o->transferencia_numero ?? $o->pago_referencia,
+            $o->clc_motivo_cancelacion,
+        ]);
+        $descripcion = implode(' · ', array_filter([
+            ($f['desde'] ?? null) || ($f['hasta'] ?? null) ? 'Del '.(($f['desde'] ?? null) ? date('d/m/Y', strtotime($f['desde'])) : 'inicio').' al '.(($f['hasta'] ?? null) ? date('d/m/Y', strtotime($f['hasta'])) : 'hoy') : 'Todas las fechas',
+            ($f['estado'] ?? null) ? 'Estado: '.TramiteClc::descripcion($f['estado']) : (($f['canceladas'] ?? false) ? 'Con canceladas' : 'Sin canceladas'),
+            ($f['fuente'] ?? null) ? 'Fuente '.$f['fuente'] : null,
+            filled($f['buscar'] ?? null) ? 'Búsqueda: '.$f['buscar'] : null,
+            $todas ? null : 'Las CLC que puedes ver',
+        ]));
+        $formato = '#,##0.00;[Red]-#,##0.00';
+        $libro = ExcelTabla::libro('Cuentas por liquidar certificadas', $descripcion,
+            ['CLC', 'Fecha', 'Estado', 'Secretaría', 'Requisición', 'Orden', 'Trámite', 'A favor de', 'RFC', 'Concepto', 'Fuente', 'Partida', 'Importe', 'ISR retenido', 'A pagar', 'Fecha de pago', 'Forma de pago', 'Transferencia / cheque', 'Motivo de cancelación'],
+            $filas, [13 => $formato, 14 => $formato, 15 => $formato], [13, 14, 15], [15, 11, 24, 34, 13, 14, 14, 36, 14, 44, 8, 10, 15, 13, 15, 12, 13, 16, 30]);
+
+        return response()->streamDownload(
+            fn () => (new Xlsx($libro))->save('php://output'),
+            'clc_'.now('America/Mexico_City')->format('Ymd_Hi').'.xlsx',
+            ['Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+        );
     }
 
     /** Documento de la relación: las CLC que se envían de un área a otra (sin O.C., requisición ni firmas). */

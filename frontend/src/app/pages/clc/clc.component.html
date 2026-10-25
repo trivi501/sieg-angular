@@ -40,6 +40,14 @@
             <option [value]="e.key">{{ e.value }}</option>
           }
         </select>
+        <!-- Reporte de CLC en Excel: los filtros de arriba más el periodo de la CLC -->
+        <input type="date" class="form-control form-control-sm w-auto" title="CLC desde" [(ngModel)]="excelDesde" />
+        <input type="date" class="form-control form-control-sm w-auto" title="CLC hasta" [(ngModel)]="excelHasta" />
+        <div class="form-check align-self-center mb-0">
+          <input id="canceladas" type="checkbox" class="form-check-input" [(ngModel)]="excelCanceladas" />
+          <label class="form-check-label small" for="canceladas">Con canceladas</label>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-success" [disabled]="exportando()" (click)="exportarExcel()" appAccion="Exportar CLC a Excel" icono="file-excel"></button>
       }
     </div>
   }
@@ -264,8 +272,21 @@
       }
 
       @if (config.pago) {
-        <p class="small text-muted">Antes de pagar se vuelve a consultar cada factura en el SAT: una cancelada o no encontrada detiene el pago.</p>
+        <p class="small text-muted">
+          Antes de pagar se vuelve a consultar cada factura en el SAT: una cancelada o no encontrada detiene el pago. Se genera un pago (TRF) por proveedor
+          con sus CLC; también se puede pagar desde la <a routerLink="/tesoreria" (click)="modal.dismiss()">mesa de control de Tesorería</a>.
+        </p>
         <div class="row g-2">
+          <div class="col-12">
+            <label class="form-label" for="pago-cuenta">Cuenta del Ayuntamiento de la que sale</label>
+            <select id="pago-cuenta" class="form-select" [(ngModel)]="cuentaId" [class.is-invalid]="errores()['cuenta_id']">
+              <option [ngValue]="null">Seleccionar…</option>
+              @for (c of cuentas(); track c.id) {
+                <option [ngValue]="c.id">{{ c.etiqueta }}{{ c.fuente ? ' · fuente ' + c.fuente : '' }}</option>
+              }
+            </select>
+            <div class="invalid-feedback">{{ errores()['cuenta_id'] }}</div>
+          </div>
           <div class="col-md-6">
             <label class="form-label" for="pago-fecha">Fecha de pago</label>
             <input id="pago-fecha" type="date" class="form-control" [max]="hoy" [(ngModel)]="pagoFecha" [class.is-invalid]="errores()['pago_fecha']" />
@@ -285,7 +306,7 @@
             <input id="pago-ref" class="form-control" [(ngModel)]="pagoReferencia" [class.is-invalid]="errores()['pago_referencia']" />
             <div class="invalid-feedback">{{ errores()['pago_referencia'] }}</div>
             @if (pagoForma === 'transferencia') {
-              <small class="text-muted">El número de transferencia (TRF-AÑO-0001) lo asigna el sistema.</small>
+              <small class="text-muted">El número de transferencia (TRF-AÑO-0001) lo asigna el sistema: uno por proveedor para todas sus CLC.</small>
             }
           </div>
         </div>

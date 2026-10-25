@@ -245,6 +245,7 @@ export interface LineaGasto {
   vigente: number;
   comprometido: number;
   devengado: number;
+  ejercido: number;
   pagado: number;
   disponible: number;
   saldo_corrido: number;
@@ -350,8 +351,9 @@ export class RequisicionesService {
   }
 
   /** Alta rápida del proveedor desde la orden: el mismo catálogo /catalogos/proveedores. */
+  /** Alta desde la orden de compra: proveedor de compra única (eventual), aparte en el padrón y sin cédula. */
   altaProveedor(nombre: string, rfc: string) {
-    return this.http.post<Mensaje & { id: number }>(`${this.api}/catalogos/proveedores`, { nombre, rfc, activo: true });
+    return this.http.post<Mensaje & { id: number }>(`${this.api}/catalogos/proveedores`, { nombre, rfc, activo: true, compra_unica: true });
   }
 
   generarOrden(requisicion: number, datos: { proveedor_id: number | null; fecha: string; observaciones: string }) {

@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 
 import { environment } from 'src/environments/environment';
 
@@ -74,7 +74,16 @@ export class ClcService {
     return this.http.get<TramiteClc>(`${this.api}/clc`);
   }
 
-  accion(datos: { accion: string; ordenes: number[]; observaciones?: string; pago_fecha?: string; pago_forma?: string; pago_referencia?: string }) {
+  /** Reporte de CLC en Excel con filtros (estado, búsqueda, periodo de la CLC, con o sin canceladas). */
+  excel(filtros: Record<string, string | number>) {
+    let params = new HttpParams();
+    for (const [k, v] of Object.entries(filtros)) {
+      if (v !== '' && v !== null && v !== undefined) params = params.set(k, v);
+    }
+    return this.http.get(`${this.api}/clc/excel`, { params, responseType: 'blob' });
+  }
+
+  accion(datos: { accion: string; ordenes: number[]; observaciones?: string; pago_fecha?: string; pago_forma?: string; pago_referencia?: string; cuenta_id?: number | null }) {
     return this.http.post<{ message: string; relacion: { id: number; folio: string } | null }>(`${this.api}/clc/accion`, datos);
   }
 

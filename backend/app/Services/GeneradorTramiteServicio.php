@@ -56,7 +56,7 @@ class GeneradorTramiteServicio
                 app(OrdenCompraController::class)->crearClc($orden, " (fondo revolvente {$tramite->folio_completo}; un renglón por factura y partida)");
             } else {
                 $orden = $this->orden($tramite, $requisicion, $facturas, $proveedor, $user);
-                app(OrdenCompraController::class)->crearClc($orden, " (trámite de servicios {$tramite->folio_completo}; un renglón por factura)");
+                app(OrdenCompraController::class)->crearClc($orden, " (".mb_strtolower($tramite->nombreTipo())." {$tramite->folio_completo}; un renglón por factura)");
             }
 
             $tramite->update(['estado' => 'validado', 'validado_at' => now(), 'validado_user_id' => $user->id,
@@ -128,7 +128,11 @@ class GeneradorTramiteServicio
             ]);
         }
 
-        $origen = $tramite->esFondo() ? "del fondo revolvente {$tramite->folio_completo} a favor de {$tramite->beneficiarioFondo()}" : "del trámite de servicios {$tramite->folio_completo}";
+        $origen = $tramite->esFondo() ? "del fondo revolvente {$tramite->folio_completo} a favor de {$tramite->beneficiarioFondo()}" : match ($tramite->tipo) {
+            'combustible' => 'de la bitácora de combustible',
+            'contrato' => "de la mensualidad de contrato ({$tramite->contrato?->folio_completo})",
+            default => 'del trámite de servicios',
+        }." {$tramite->folio_completo}";
         $this->bitacora($requisicion, 3, "Requisición generada {$origen} ({$facturas->count()} factura(s)), validado por {$user->name}.");
 
         return $requisicion;
@@ -205,7 +209,7 @@ class GeneradorTramiteServicio
             'folio_completo' => sprintf('OC-%d-%04d', $año, $folio),
             'fecha' => now('America/Mexico_City')->toDateString(),
             'importe' => round((float) $requisicion->total, 2),
-            'observaciones' => "Trámite de servicios {$tramite->folio_completo}: {$facturas->count()} factura(s).",
+            'observaciones' => "{$tramite->nombreTipo()} {$tramite->folio_completo}: {$facturas->count()} factura(s).",
             'user_id' => $user->id,
             // Resumen de las facturas (el detalle está en el trámite). xml_uuid queda vacío: son varias.
             'xml_rfc_emisor' => $primera?->rfc_emisor,
@@ -222,7 +226,7 @@ class GeneradorTramiteServicio
 
         $this->bitacora($requisicion, EgresoRequisicion::CON_FACTURA,
             "Orden de compra {$orden->folio_completo} generada para {$proveedor->nombre} por $".number_format($orden->importe, 2)
-            ." con {$facturas->count()} factura(s) del trámite {$tramite->folio_completo}.");
+            ." con {$facturas->count()} factura(s) de {$tramite->folio_completo}.");
 
         return $orden;
     }

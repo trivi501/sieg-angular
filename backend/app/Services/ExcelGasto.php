@@ -22,6 +22,7 @@ final class ExcelGasto
         'vigente' => 'Vigente',
         'comprometido' => 'Comprometido',
         'devengado' => 'Devengado',
+        'ejercido' => 'Ejercido',
         'pagado' => 'Pagado',
         'disponible' => 'Disponible',
         'saldo_corrido' => 'Saldo corrido',

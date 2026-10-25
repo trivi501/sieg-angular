@@ -6,12 +6,13 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 
 import { erroresDe } from 'src/app/core/api';
 import { money } from 'src/app/core/formato';
+import { AuthService } from 'src/app/core/auth/auth.service';
 import { CanDirective } from 'src/app/core/auth/can.directive';
 import { PaginacionComponent } from '../admin/paginacion.component';
 import { RequisicionesService, UnidadCaptura } from '../requisiciones/requisiciones.service';
 import { AccionComponent } from 'src/app/shared/accion.component';
 import { SelectBusquedaDirective } from 'src/app/shared/select-busqueda.directive';
-import { ListaTramites, RUTA_TIPO, ServiciosService, TipoTramite, claseEstadoTramite } from './servicios.service';
+import { ListaTramites, NOMBRE_TIPO, RUTA_TIPO, ServiciosService, TipoTramite, claseEstadoTramite } from './servicios.service';
 
 /**
  * Lista de trámites de servicios (data.tipo = 'servicio') o de fondos revolventes (data.tipo = 'fondo'): el área
@@ -23,9 +24,16 @@ import { ListaTramites, RUTA_TIPO, ServiciosService, TipoTramite, claseEstadoTra
   template: `
     <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
       <div>
-        <h4 class="mb-1">{{ fondo ? 'Fondos revolventes' : 'Trámites de servicios' }}</h4>
+        @if (combustible && veCargas) {
+          <a routerLink="/combustible" class="small text-muted">← Cargas del proveedor de combustible</a>
+        }
+        <h4 class="mb-1">{{ nombre.lista }}</h4>
         <p class="text-muted small mb-0">
-          @if (fondo) {
+          @if (combustible) {
+            Una por secretaría y por carga del Excel del proveedor, con sus tickets y sus facturas (XML). Cada secretaría llena la suya: elige el presupuesto
+            (partida, proyecto y fuente) y el concepto, y solicita la validación. Al validarse, si hay suficiencia, se generan la requisición, la orden de
+            compra y la CLC.
+          } @else if (fondo) {
             Cada área sube las facturas de sus gastos menores (de distintos proveedores, hasta $2,000 cada una) y asigna la partida de cada artículo. Al validarse se
             generan la requisición y la CLC a favor del trabajador.
           } @else {
@@ -34,7 +42,9 @@ import { ListaTramites, RUTA_TIPO, ServiciosService, TipoTramite, claseEstadoTra
           }
         </p>
       </div>
-      <button *appCan="permisoCrear" type="button" class="btn btn-primary" (click)="nuevo.set(!nuevo())" [appAccion]="fondo ? 'Nuevo fondo revolvente' : 'Nuevo trámite'" icono="plus"></button>
+      @if (!combustible) {
+        <button *appCan="permisoCrear" type="button" class="btn btn-primary" (click)="nuevo.set(!nuevo())" [appAccion]="nombre.nuevo" icono="plus"></button>
+      }
     </div>
 
     @if (nuevo()) {
@@ -138,7 +148,7 @@ import { ListaTramites, RUTA_TIPO, ServiciosService, TipoTramite, claseEstadoTra
                 </tr>
               } @empty {
                 <tr>
-                  <td colspan="8" class="text-center text-muted py-4">{{ datos() ? (fondo ? 'Sin fondos revolventes.' : 'Sin trámites.') : 'Cargando…' }}</td>
+                  <td colspan="8" class="text-center text-muted py-4">{{ datos() ? 'Sin ' + nombre.lista.toLowerCase() + '.' : 'Cargando…' }}</td>
                 </tr>
               }
             </tbody>
@@ -164,6 +174,9 @@ export class ServiciosListaComponent {
 
   readonly tipo: TipoTramite = inject(ActivatedRoute).snapshot.data['tipo'] ?? 'servicio';
   readonly fondo = this.tipo === 'fondo';
+  readonly combustible = this.tipo === 'combustible';
+  readonly veCargas = inject(AuthService).can(['combustible-cargar', 'combustible-validar']);
+  readonly nombre = NOMBRE_TIPO[this.tipo];
   readonly ruta = RUTA_TIPO[this.tipo];
   readonly permisoCrear = `${this.ruta}-create`;
   readonly money = money;
@@ -184,6 +197,8 @@ export class ServiciosListaComponent {
 
   constructor() {
     this.cargar(1);
+    // Las bitácoras de combustible no se dan de alta aquí (salen del Excel del proveedor).
+    if (this.combustible) return;
     this.requisiciones.opciones().subscribe((o) => {
       this.unidades.set(o.unidades);
       this.unidad = o.unidadDefault ?? (o.unidades.length === 1 ? o.unidades[0].id : null);

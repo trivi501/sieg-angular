@@ -8,11 +8,9 @@ use App\Models\OrdenCompra;
 use App\Models\PresupuestoEgreso;
 use App\Models\TramiteServicio;
 use App\Models\TramiteServicioFactura;
-use App\Services\Cfdi;
-use App\Services\EstadoCfdiSat;
+use App\Services\FacturasTramite;
 use App\Services\GeneradorTramiteServicio;
 use App\Services\PresupuestoService;
-use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -26,6 +24,8 @@ use Illuminate\Validation\ValidationException;
  *  - fondo (FR-…, fondo revolvente): muchas facturas de distintos proveedores (registrados o no), de hasta
  *    $2,000 cada una; cada artículo con su partida; al validar se generan requisición y CLC a favor de un
  *    trabajador (sin banco, cuenta, CLABE ni RFC).
+ *  - combustible (BC-…, bitácora de combustible): como un servicio, pero se crea al cargar el Excel del proveedor
+ *    (CombustibleController) y solo acepta las facturas de sus tickets.
  * El área captura y lo envía a validar; quien tenga el permiso de validar lo valida o lo regresa con observaciones.
  */
 class TramiteServicioController extends Controller
@@ -72,6 +72,9 @@ class TramiteServicioController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        if ($this->tipo() === 'combustible') {
+            return $this->error('Las bitácoras de combustible se crean al cargar el Excel del proveedor.');
+        }
         $validated = $request->validate([
             'id_cat_egreso_unidad_administrativa' => 'required|integer',
             'concepto' => 'required|string|max:3000',
@@ -184,7 +187,41 @@ class TramiteServicioController extends Controller
                     && ($user->can($tramite->permiso('create')) || $user->can($tramite->permiso('validar'))),
                 'documentos' => $tramite->estado === 'validado',
             ],
+            'combustible' => $tramite->esCombustible() ? $this->resumenCombustible($tramite) : null,
         ]);
+    }
+
+    /** Bitácora de combustible: su carga del Excel y, por cada factura del Excel, sus tickets y si ya tiene XML. */
+    private function resumenCombustible(TramiteServicio $tramite): array
+    {
+        $lote = $tramite->lote;
+        $totales = $tramite->facturas->keyBy('id');
+        $porFactura = $tramite->cargas()->reorder()->toBase()
+            ->selectRaw('factura_folio, MAX(tramite_servicio_factura_id) AS factura_id, COUNT(*) AS tickets, SUM(litros) AS litros, SUM(importe) AS importe, MAX(fecha_factura) AS fecha_factura')
+            ->groupBy('factura_folio')->orderBy('factura_folio')->get();
+
+        return [
+            'lote_id' => $lote?->id,
+            'periodo' => $lote?->periodo,
+            'archivo' => $lote?->archivo_nombre,
+            'tickets' => (int) $porFactura->sum('tickets'),
+            'litros' => round((float) $porFactura->sum('litros'), 3),
+            'importe' => round((float) $porFactura->sum('importe'), 2),
+            'facturas' => $porFactura->map(function ($f) use ($totales) {
+                $xml = $f->factura_id ? $totales->get((int) $f->factura_id) : null;
+
+                return [
+                    'folio' => $f->factura_folio,
+                    'fecha_factura' => $f->fecha_factura,
+                    'tickets' => (int) $f->tickets,
+                    'litros' => round((float) $f->litros, 3),
+                    'importe' => round((float) $f->importe, 2),
+                    'factura_id' => $xml?->id,
+                    'total_xml' => $xml?->total,
+                    'diferencia' => $xml ? round($xml->total - (float) $f->importe, 2) : null,
+                ];
+            })->values(),
+        ];
     }
 
     public function update(Request $request, TramiteServicio $tramite): JsonResponse
@@ -196,98 +233,14 @@ class TramiteServicioController extends Controller
         return response()->json(['message' => 'Datos actualizados.']);
     }
 
-    /**
-     * Sube una factura (XML): CFDI de ingreso timbrado, a nombre del Ayuntamiento, vigente en el SAT y no cargado
-     * antes. Servicio: del mismo proveedor que las demás (se vincula por RFC). Fondo: de cualquier proveedor y de
-     * hasta $2,000.
-     */
-    public function subirFactura(Request $request, TramiteServicio $tramite, EstadoCfdiSat $sat): JsonResponse
+    /** Sube una factura (XML); las validaciones están en FacturasTramite. */
+    public function subirFactura(Request $request, TramiteServicio $tramite, FacturasTramite $facturas): JsonResponse
     {
         $this->exigirEditable($tramite);
-        $fondo = $tramite->esFondo();
         $request->validate(['xml' => 'required|file|max:2048'], [], ['xml' => 'factura (XML)']);
-        $contenido = file_get_contents($request->file('xml')->getRealPath());
-        $cfdi = Cfdi::leer($contenido);
+        $r = $facturas->agregar($tramite, file_get_contents($request->file('xml')->getRealPath()));
 
-        $errores = [];
-        if (! $cfdi['uuid']) {
-            $errores[] = 'El XML no trae timbre fiscal (UUID); no es un CFDI timbrado.';
-        }
-        if ($cfdi['tipo'] && $cfdi['tipo'] !== 'I') {
-            $errores[] = "El CFDI es de tipo {$cfdi['tipo']}; solo se aceptan facturas de ingreso (tipo I).";
-        }
-        $receptor = (string) config('services.sat.rfc_receptor');
-        if ($receptor && $cfdi['rfc_receptor'] && $cfdi['rfc_receptor'] !== $receptor) {
-            $errores[] = "La factura está a nombre de {$cfdi['rfc_receptor']}, no del Ayuntamiento ({$receptor}).";
-        }
-        if ($fondo && $cfdi['total'] > TramiteServicio::LIMITE_FACTURA_FONDO) {
-            $errores[] = sprintf('La factura es por $%s: en un fondo revolvente cada factura puede ser de hasta $%s.',
-                number_format($cfdi['total'], 2), number_format(TramiteServicio::LIMITE_FACTURA_FONDO, 2));
-        }
-        if (! $fondo && $tramite->proveedor_rfc && $cfdi['rfc_emisor'] !== $tramite->proveedor_rfc) {
-            $errores[] = "Todas las facturas del trámite deben ser del mismo proveedor ({$tramite->proveedor_rfc}); esta la emite {$cfdi['rfc_emisor']}.";
-        }
-        if ($cfdi['uuid']) {
-            $errores = [...$errores, ...$this->duplicidades($cfdi['uuid'])];
-        }
-        if ($errores) {
-            throw ValidationException::withMessages(['xml' => implode(' ', $errores)]);
-        }
-
-        $estado = $sat->consultar($cfdi['rfc_emisor'] ?? '', $cfdi['rfc_receptor'] ?? $receptor, $cfdi['total'], $cfdi['uuid'], $cfdi['sello']);
-        if (! $estado) {
-            throw ValidationException::withMessages(['xml' => ($sat->motivo ?? 'No se pudo verificar la factura en el SAT.').' La factura no se guardó.']);
-        }
-        if ($error = EstadoCfdiSat::error($estado, $cfdi['uuid'])) {
-            throw ValidationException::withMessages(['xml' => $error]);
-        }
-
-        $ruta = "tramites-servicio/{$tramite->año}/{$tramite->folio_completo}_{$cfdi['uuid']}.xml";
-        Storage::disk('local')->put($ruta, $contenido);
-        try {
-            $factura = DB::transaction(function () use ($tramite, $cfdi, $ruta, $estado, $fondo) {
-                $factura = $tramite->facturas()->create([
-                    'xml_path' => $ruta,
-                    'uuid' => $cfdi['uuid'],
-                    'rfc_emisor' => $cfdi['rfc_emisor'],
-                    'nombre_emisor' => $cfdi['nombre_emisor'],
-                    'rfc_receptor' => $cfdi['rfc_receptor'],
-                    'serie' => $cfdi['serie'],
-                    'folio' => $cfdi['folio'],
-                    'fecha' => $cfdi['fecha'],
-                    'subtotal' => $cfdi['subtotal'],
-                    'descuento' => $cfdi['descuento'],
-                    'iva' => $cfdi['iva'],
-                    'ieps' => $cfdi['ieps'],
-                    'isr' => $cfdi['isr'],
-                    'total' => $cfdi['total'],
-                    // Fondo: cada artículo lleva luego su partida / proyecto / fuente.
-                    'conceptos' => $fondo
-                        ? array_map(fn ($a) => $a + ['partida' => null, 'proyecto' => null, 'fuente' => null], $cfdi['conceptos'])
-                        : $cfdi['conceptos'],
-                    'sat_estado' => $estado['estado'],
-                    'sat_verificado_at' => now(),
-                    // Por omisión, el concepto general del trámite (se puede cambiar por factura).
-                    'concepto' => $tramite->concepto,
-                ]);
-                if (! $fondo && ! $tramite->proveedor_rfc) {
-                    $tramite->update(['proveedor_rfc' => $cfdi['rfc_emisor'], 'proveedor_nombre' => $cfdi['nombre_emisor']]);
-                }
-
-                return $factura;
-            });
-        } catch (UniqueConstraintViolationException) {
-            Storage::disk('local')->delete($ruta);
-            throw ValidationException::withMessages(['xml' => "La factura {$cfdi['uuid']} ya se cargó."]);
-        }
-
-        $tramite->refresh();
-        $aviso = $tramite->impedimentoProveedor();
-        if ($estado['efos']) {
-            $aviso = trim(($aviso ? $aviso.' ' : '')."Atención: el emisor {$cfdi['rfc_emisor']} aparece en la lista de EFOS del SAT.");
-        }
-
-        return response()->json(['id' => $factura->id, 'message' => "Factura {$cfdi['uuid']} agregada (vigente en el SAT).", 'aviso' => $aviso], 201);
+        return response()->json(['id' => $r['factura']->id, 'message' => $r['message'], 'aviso' => $r['aviso']], 201);
     }
 
     /**
@@ -380,6 +333,12 @@ class TramiteServicioController extends Controller
         if ($fondo && ! $tramite->trabajador_nombre) {
             return $this->error('Captura el nombre del trabajador a cuyo favor va la CLC.');
         }
+        if ($tramite->esCombustible()) {
+            $faltan = $tramite->cargas()->whereNull('tramite_servicio_factura_id')->reorder('factura_folio')->distinct()->pluck('factura_folio');
+            if ($faltan->isNotEmpty()) {
+                return $this->error("Faltan los XML de {$faltan->count()} factura(s) del Excel del proveedor: {$faltan->take(10)->implode(', ')}".($faltan->count() > 10 ? '…' : '.'));
+            }
+        }
         if ($impedimento = $tramite->impedimentoProveedor()) {
             return $this->error($impedimento);
         }
@@ -400,7 +359,7 @@ class TramiteServicioController extends Controller
         return response()->json([
             'message' => $tramite->esFondo()
                 ? "Fondo revolvente validado: requisición {$requisicion->folio_completo} y CLC {$orden?->clc_folio_completo} a favor de {$tramite->trabajador_nombre}. Ya se pueden imprimir."
-                : "Trámite validado: requisición {$requisicion->folio_completo}, orden de compra {$orden?->folio_completo} y CLC {$orden?->clc_folio_completo} generadas. Ya se pueden imprimir.",
+                : ($tramite->esCombustible() ? 'Bitácora de combustible validada' : 'Trámite validado').": requisición {$requisicion->folio_completo}, orden de compra {$orden?->folio_completo} y CLC {$orden?->clc_folio_completo} generadas. Ya se pueden imprimir.",
         ]);
     }
 
@@ -464,25 +423,14 @@ class TramiteServicioController extends Controller
         ] : [];
     }
 
-    /** Ya cargada en otro trámite o fondo, o en una orden de compra. */
-    private function duplicidades(string $uuid): array
-    {
-        $errores = [];
-        $otro = TramiteServicioFactura::with('tramite:id,folio_completo,estado')->where('uuid', $uuid)->first();
-        if ($otro) {
-            $errores[] = "La factura {$uuid} ya está en {$otro->tramite?->folio_completo}.";
-        }
-        $orden = OrdenCompra::where('xml_uuid', $uuid)->first(['folio_completo']);
-        if ($orden) {
-            $errores[] = "La factura {$uuid} ya está cargada en la orden de compra {$orden->folio_completo}.";
-        }
-
-        return $errores;
-    }
-
+    /**
+     * Ve todas las secretarías quien valida y los administradores; en combustible, también la unidad de combustibles
+     * (combustible-cargar). Quien solo captura (cada secretaría) ve las suyas.
+     */
     private function veTodos($user): bool
     {
-        return $user->can($this->permiso('validar')) || $user->hasRole(['Super Admin', 'Admin']);
+        return $user->can($this->permiso('validar')) || $user->hasRole(['Super Admin', 'Admin'])
+            || ($this->tipo() === 'combustible' && $user->can('combustible-cargar'));
     }
 
     private function autorizar(TramiteServicio $tramite): void

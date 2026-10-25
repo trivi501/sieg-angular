@@ -7,11 +7,13 @@ import { forkJoin, of } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 
 import { erroresDe } from 'src/app/core/api';
+import { AuthService } from 'src/app/core/auth/auth.service';
 import { money } from 'src/app/core/formato';
 import { RequisicionesService, abrirBlob } from '../requisiciones/requisiciones.service';
 import { AccionComponent } from 'src/app/shared/accion.component';
 import { SelectBusquedaDirective } from 'src/app/shared/select-busqueda.directive';
-import { DetalleTramite, FacturaTramite, LineaTramite, RUTA_TIPO, ServiciosService, TipoTramite, claseEstadoTramite } from './servicios.service';
+import { DetalleTramite, FacturaTramite, LineaTramite, NOMBRE_TIPO, RUTA_TIPO, ServiciosService, TipoTramite, claseEstadoTramite } from './servicios.service';
+import { CombustibleService, TicketCombustible, litros } from '../combustible/combustible.service';
 
 type Aviso = { tipo: 'success' | 'danger' | 'warning'; texto: string };
 /** Clasificación de una factura mientras se edita. */
@@ -41,16 +43,22 @@ type LineaArticulo = { partida: string; proyecto: string; fuente: string };
 })
 export class ServicioDetalleComponent {
   private servicio = inject(ServiciosService);
+  private combustibles = inject(CombustibleService);
   private requisiciones = inject(RequisicionesService);
   private router = inject(Router);
 
   private readonly ruta = inject(ActivatedRoute).snapshot;
   readonly id = Number(this.ruta.paramMap.get('id'));
-  /** servicio (/servicios) o fondo revolvente (/fondos). */
+  /** servicio (/servicios), fondo revolvente (/fondos) o bitácora de combustible (/combustible). */
   readonly tipo: TipoTramite = this.ruta.data['tipo'] ?? 'servicio';
   readonly fondo = this.tipo === 'fondo';
-  readonly base = '/' + RUTA_TIPO[this.tipo];
+  readonly combustible = this.tipo === 'combustible';
+  readonly nombre = NOMBRE_TIPO[this.tipo];
+  // Combustible: cada secretaría ve sus bitácoras en /combustible/bitacoras (/combustible es de la unidad de combustibles).
+  readonly base = this.combustible ? '/combustible/bitacoras' : '/' + RUTA_TIPO[this.tipo];
+  private readonly veCargas = inject(AuthService).can(['combustible-cargar', 'combustible-validar']);
   readonly money = money;
+  readonly litros = litros;
   readonly clase = claseEstadoTramite;
 
   d = signal<DetalleTramite | null>(null);
@@ -72,6 +80,11 @@ export class ServicioDetalleComponent {
   motivo = '';
   modo = signal<'rechazar' | 'cancelar' | null>(null);
 
+  /** Combustible: los tickets del Excel (se cargan al abrirlos) y la clasificación para todas las facturas. */
+  tickets = signal<TicketCombustible[] | null>(null);
+  verTickets = signal(false);
+  todas: Clasificacion = { partida: '', proyecto: '', fuente: '', concepto: '' };
+
   constructor() {
     this.cargar();
   }
@@ -88,6 +101,11 @@ export class ServicioDetalleComponent {
         this.clasif = Object.fromEntries(
           d.facturas.map((f) => [f.id, { partida: f.partida ?? '', proyecto: f.proyecto ?? '', fuente: f.fuente ?? '', concepto: f.concepto ?? '' }])
         );
+        // Combustible: de inicio, la clasificación de la primera factura (o el concepto general).
+        const primera = d.facturas[0];
+        if (this.combustible && !this.todas.partida) {
+          this.todas = { partida: primera?.partida ?? '', proyecto: primera?.proyecto ?? '', fuente: primera?.fuente ?? '', concepto: primera?.concepto ?? d.tramite.concepto };
+        }
       },
       error: (e: HttpErrorResponse) => this.error.set(e.status === 404 ? 'No existe.' : erroresDe(e).mensaje)
     });
@@ -258,6 +276,62 @@ export class ServicioDetalleComponent {
     });
   }
 
+  // --- Combustible ---
+
+  /** Opciones encadenadas para "todas las facturas". */
+  proyectosTodas(): { clave: string; nombre: string | null }[] {
+    return this.proyectosDe(this.todas.partida);
+  }
+  fuentesTodas(): { clave: string; nombre: string | null; disponible: number }[] {
+    return this.fuentesDe(this.todas.partida, this.todas.proyecto);
+  }
+  cambiarTodas(campo: keyof Clasificacion, valor: string): void {
+    this.todas = { ...this.todas, [campo]: valor };
+    if (campo === 'partida') this.todas = { ...this.todas, proyecto: '', fuente: '' };
+    if (campo === 'proyecto') this.todas = { ...this.todas, fuente: '' };
+    if (this.todas.partida && !this.todas.proyecto && this.proyectosTodas().length === 1) this.todas.proyecto = this.proyectosTodas()[0].clave;
+    if (this.todas.proyecto && !this.todas.fuente && this.fuentesTodas().length === 1) this.todas.fuente = this.fuentesTodas()[0].clave;
+  }
+
+  /** Misma partida, proyecto, fuente y concepto en todas las facturas de la bitácora. */
+  clasificarTodas(): void {
+    const facturas = this.d()?.facturas ?? [];
+    if (!facturas.length) return;
+    const datos = { partida: this.todas.partida || null, proyecto: this.todas.proyecto || null, fuente: this.todas.fuente || null, concepto: this.todas.concepto || null };
+    this.ocupado.set(true);
+    forkJoin(
+      facturas.map((f) =>
+        this.servicio.clasificar(this.tipo, this.id, f.id, datos).pipe(
+          catchError((e: HttpErrorResponse) => {
+            const { campos, mensaje } = erroresDe(e);
+            return of({ message: `${f.serie_folio ?? f.uuid}: ${Object.values(campos)[0] ?? mensaje}`, error: true });
+          })
+        )
+      )
+    ).subscribe((rs) => {
+      this.ocupado.set(false);
+      const errores = rs.filter((r) => 'error' in r);
+      this.aviso.set(
+        errores.length
+          ? { tipo: 'danger', texto: errores.map((r) => r.message).join(' · ') }
+          : { tipo: 'success', texto: `${facturas.length} factura(s) clasificadas con la partida ${this.todas.partida}.` }
+      );
+      this.cargar();
+    });
+  }
+
+  alternarTickets(): void {
+    this.verTickets.set(!this.verTickets());
+    if (this.verTickets() && !this.tickets()) {
+      this.combustibles.tickets(this.id).subscribe((r) => this.tickets.set(r.tickets));
+    }
+  }
+
+  bitacora(formato: 'excel' | 'pdf'): void {
+    const folio = this.d()!.tramite.folio;
+    this.combustibles.bitacora(this.id, formato).subscribe((b) => abrirBlob(b, `bitacora_combustible_${folio}.${formato === 'excel' ? 'xlsx' : 'pdf'}`, formato === 'excel'));
+  }
+
   // --- Documentos (ya validado) ---
 
   imprimirRequisicion(): void {
@@ -275,5 +349,11 @@ export class ServicioDetalleComponent {
 
   irALista(): void {
     this.router.navigate([this.base]);
+  }
+
+  /** A dónde regresa: la carga del Excel (combustible) o la lista del tipo. */
+  regreso(): string {
+    const lote = this.d()?.combustible?.lote_id;
+    return this.combustible && lote && this.veCargas ? `/combustible/lotes/${lote}` : this.base;
   }
 }

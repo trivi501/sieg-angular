@@ -1295,7 +1295,7 @@ class RequisicionController extends Controller
             'last_page' => max(1, (int) ceil($filas->count() / $porPagina)),
             'per_page' => $porPagina,
             'total' => $filas->count(),
-            'totales' => collect(['asignado', 'modificado', 'vigente', 'comprometido', 'devengado', 'pagado', 'disponible', 'saldo_corrido', 'disponible_mes'])
+            'totales' => collect(['asignado', 'modificado', 'vigente', 'comprometido', 'devengado', 'ejercido', 'pagado', 'disponible', 'saldo_corrido', 'disponible_mes'])
                 ->mapWithKeys(fn ($c) => [$c => $suma($c)]),
             'unidades' => $this->unidadesParaFront($unidadesDisponibles),
             'saldos' => [
@@ -1357,7 +1357,9 @@ class RequisicionController extends Controller
                     'momento' => match (true) {
                         in_array($estado, [4, EgresoRequisicion::CANCELADA], true) => null,
                         $oc && ! $oc->cancelada_at && ! $oc->clc_cancelada_at && $oc->pago_fecha => 'Pagado',
-                        $oc && ! $oc->cancelada_at && $oc->xml_uuid => 'Devengado',
+                        $oc && ! $oc->cancelada_at && ! $oc->clc_cancelada_at && $oc->clc_folio_completo => 'Ejercido',
+                        // Con factura: su XML o las del trámite (servicios, fondo, combustible o contrato) del que salió.
+                        $oc && ! $oc->cancelada_at && ($oc->xml_uuid || $oc->xml_cargado_at || $oc->tramite_servicio_id) => 'Devengado',
                         (bool) $r->suficiencia => 'Comprometido',
                         default => 'En trámite',
                     },

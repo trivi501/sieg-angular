@@ -3,10 +3,17 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 
 import { environment } from 'src/environments/environment';
 import { Paginado } from 'src/app/core/api';
+import type { ResumenCombustible } from '../combustible/combustible.service';
 
-/** servicio (/servicios, TS-…) o fondo revolvente (/fondos, FR-…). */
-export type TipoTramite = 'servicio' | 'fondo';
-export const RUTA_TIPO: Record<TipoTramite, string> = { servicio: 'servicios', fondo: 'fondos' };
+/** servicio (/servicios, TS-…), fondo revolvente (/fondos, FR-…) o bitácora de combustible (/combustible, BC-…). */
+export type TipoTramite = 'servicio' | 'fondo' | 'combustible';
+export const RUTA_TIPO: Record<TipoTramite, string> = { servicio: 'servicios', fondo: 'fondos', combustible: 'combustible' };
+/** Nombres para títulos y enlaces. */
+export const NOMBRE_TIPO: Record<TipoTramite, { lista: string; uno: string; nuevo: string }> = {
+  servicio: { lista: 'Trámites de servicios', uno: 'Trámite', nuevo: 'Nuevo trámite' },
+  fondo: { lista: 'Fondos revolventes', uno: 'Fondo revolvente', nuevo: 'Nuevo fondo revolvente' },
+  combustible: { lista: 'Bitácoras de combustible', uno: 'Bitácora de combustible', nuevo: '' }
+};
 
 export type EstadoTramite = 'captura' | 'por_validar' | 'rechazado' | 'validado' | 'cancelado';
 
@@ -117,6 +124,8 @@ export interface DetalleTramite {
   facturas: FacturaTramite[];
   lineas: LineaTramite[];
   puede: { editar: boolean; enviar: boolean; validar: boolean; cancelar: boolean; documentos: boolean };
+  /** Solo en una bitácora de combustible: sus facturas del Excel del proveedor y sus tickets. */
+  combustible: ResumenCombustible | null;
 }
 
 interface Mensaje {

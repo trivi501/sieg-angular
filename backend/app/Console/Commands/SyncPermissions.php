@@ -44,6 +44,17 @@ class SyncPermissions extends Command
             'servicios-index', 'servicios-create', 'servicios-validar',
             // Fondos revolventes: cada área sube los suyos; validar se asigna desde Roles.
             'fondos-index', 'fondos-create', 'fondos-validar',
+            // Bitácora de combustible: la unidad de combustibles sube XML y Excel (cargar); cada secretaría llena la suya (create).
+            'combustible-index', 'combustible-cargar', 'combustible-create', 'combustible-validar',
+            // Arrendamientos y servicios por contrato: el área registra y carga el XML de cada mes; RM autoriza el contrato.
+            'contratos-index', 'contratos-create', 'contratos-autorizar',
+            // Padrón de proveedores del Órgano Interno de Control: expediente, cédulas y alertas.
+            'padron-index', 'padron-gestionar',
+            // Contabilidad: reporte mensual del ISR retenido.
+            'contabilidad-isr',
+
+            // Tesorería: mesa de control de pagos (Egresos), pago a proveedores, conciliación y reportes.
+            'tesoreria-index', 'tesoreria-pagar', 'tesoreria-conciliar',
 
             // Órdenes de compra (Recursos Materiales)
             'ordenes-compra-create', 'ordenes-compra-pagar', 'ordenes-compra-fecha',

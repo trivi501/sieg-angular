@@ -63,6 +63,7 @@ export class GastoComponent {
     { campo: 'vigente', etiqueta: 'Vigente' },
     { campo: 'comprometido', etiqueta: 'Comprometido' },
     { campo: 'devengado', etiqueta: 'Devengado' },
+    { campo: 'ejercido', etiqueta: 'Ejercido' },
     { campo: 'pagado', etiqueta: 'Pagado' },
     { campo: 'disponible', etiqueta: 'Disponible' },
     { campo: 'saldo_corrido', etiqueta: 'Saldo corrido' },

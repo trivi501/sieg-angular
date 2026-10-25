@@ -5,15 +5,20 @@ use App\Http\Controllers\Api\AuditoriaController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CatalogoController;
 use App\Http\Controllers\Api\ClcController;
+use App\Http\Controllers\Api\CombustibleController;
+use App\Http\Controllers\Api\ContabilidadController;
+use App\Http\Controllers\Api\ContratoController;
 use App\Http\Controllers\Api\FacturaController;
 use App\Http\Controllers\Api\ModificacionPresupuestalController;
 use App\Http\Controllers\Api\OrdenCompraController;
+use App\Http\Controllers\Api\PadronController;
 use App\Http\Controllers\Api\PanelController;
 use App\Http\Controllers\Api\PermissionController;
 use App\Http\Controllers\Api\PresupuestoController;
 use App\Http\Controllers\Api\RequisicionController;
 use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\SupportTicketController;
+use App\Http\Controllers\Api\TesoreriaController;
 use App\Http\Controllers\Api\TramiteServicioController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\VehiculoMantenimientoController;
@@ -143,7 +148,27 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Facturas primero: trámites de servicios (/servicios, permisos servicios-*) y fondos revolventes (/fondos,
     // permisos fondos-*). Mismo controlador; el tipo sale de la ruta.
-    foreach (['servicios' => 'servicio', 'fondos' => 'fondo'] as $prefijo => $tipo) {
+    // Bitácora de combustible: el Excel del proveedor (lotes), sus XML, la bitácora y el reporte de consumo. Cada
+    // bitácora es además un trámite tipo combustible (rutas combustible/{tramite} del foreach de abajo).
+    Route::prefix('combustible')->group(function () {
+        // Unidad de combustibles (combustible-cargar): XML (antes o después del Excel), Excel y cargas. Quien valida
+        // también ve las cargas.
+        Route::get('lotes', [CombustibleController::class, 'lotes'])->middleware('permission:combustible-cargar|combustible-validar');
+        Route::post('lotes/previa', [CombustibleController::class, 'previa'])->middleware('permission:combustible-cargar');
+        Route::post('lotes', [CombustibleController::class, 'importar'])->middleware('permission:combustible-cargar');
+        Route::get('lotes/{lote}', [CombustibleController::class, 'lote'])->whereNumber('lote')->middleware('permission:combustible-cargar|combustible-validar');
+        Route::delete('lotes/{lote}', [CombustibleController::class, 'eliminarLote'])->whereNumber('lote')->middleware('permission:combustible-cargar');
+        Route::post('facturas', [CombustibleController::class, 'subirFactura'])->middleware('permission:combustible-cargar');
+        Route::get('facturas/por-asignar', [CombustibleController::class, 'porAsignar'])->middleware('permission:combustible-cargar');
+        Route::delete('facturas/por-asignar/{factura}', [CombustibleController::class, 'quitarPorAsignar'])->whereNumber('factura')->middleware('permission:combustible-cargar');
+        Route::get('reporte', [CombustibleController::class, 'reporte'])->middleware('permission:combustible-index');
+        Route::get('reporte/excel', [CombustibleController::class, 'reporteExcel'])->middleware('permission:combustible-index');
+        Route::get('{tramite}/tickets', [CombustibleController::class, 'tickets'])->whereNumber('tramite')->middleware('permission:combustible-index');
+        Route::get('{tramite}/bitacora/excel', [CombustibleController::class, 'bitacoraExcel'])->whereNumber('tramite')->middleware('permission:combustible-index');
+        Route::get('{tramite}/bitacora/pdf', [CombustibleController::class, 'bitacoraPdf'])->whereNumber('tramite')->middleware('permission:combustible-index');
+    });
+
+    foreach (['servicios' => 'servicio', 'fondos' => 'fondo', 'combustible' => 'combustible'] as $prefijo => $tipo) {
         Route::prefix($prefijo)->whereNumber(['tramite', 'factura'])->group(function () use ($prefijo, $tipo) {
             Route::get('', [TramiteServicioController::class, 'index'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-index");
             Route::post('', [TramiteServicioController::class, 'store'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-create");
@@ -161,7 +186,72 @@ Route::middleware('auth:sanctum')->group(function () {
     }
 
     // Trámite de CLC entre áreas (cada acción revisa su propio permiso en App\Services\TramiteClc).
+    // Arrendamientos y servicios por contrato: el área registra y carga el XML de cada mes (genera requisición,
+    // orden de compra y CLC); Recursos Materiales autoriza el contrato una vez.
+    Route::prefix('contratos')->group(function () {
+        Route::get('', [ContratoController::class, 'index'])->middleware('permission:contratos-index');
+        Route::get('opciones', [ContratoController::class, 'opciones'])->middleware('permission:contratos-create|contratos-autorizar');
+        Route::post('', [ContratoController::class, 'store'])->middleware('permission:contratos-create');
+        Route::whereNumber('contrato')->group(function () {
+            Route::get('{contrato}', [ContratoController::class, 'show'])->middleware('permission:contratos-index');
+            Route::put('{contrato}', [ContratoController::class, 'update'])->middleware('permission:contratos-create');
+            Route::post('{contrato}/enviar', [ContratoController::class, 'enviar'])->middleware('permission:contratos-create');
+            Route::post('{contrato}/autorizar', [ContratoController::class, 'autorizarContrato'])->middleware('permission:contratos-autorizar');
+            Route::post('{contrato}/rechazar', [ContratoController::class, 'rechazar'])->middleware('permission:contratos-autorizar');
+            Route::post('{contrato}/cancelar', [ContratoController::class, 'cancelar'])->middleware('permission:contratos-create|contratos-autorizar');
+            Route::post('{contrato}/mensualidades', [ContratoController::class, 'facturar'])->middleware('permission:contratos-create');
+        });
+    });
+
+    // Padrón de proveedores del Órgano Interno de Control: expediente, cédula (vigencia de un año) y alertas.
+    Route::prefix('padron')->group(function () {
+        Route::get('', [PadronController::class, 'index'])->middleware('permission:padron-index');
+        Route::get('alertas', [PadronController::class, 'alertas'])->middleware('permission:padron-index');
+        Route::post('', [PadronController::class, 'store'])->middleware('permission:padron-gestionar');
+        Route::whereNumber(['proveedor', 'documento'])->group(function () {
+            Route::get('{proveedor}', [PadronController::class, 'show'])->middleware('permission:padron-index');
+            Route::put('{proveedor}', [PadronController::class, 'update'])->middleware('permission:padron-gestionar');
+            Route::post('{proveedor}/documentos', [PadronController::class, 'subirDocumento'])->middleware('permission:padron-gestionar');
+            Route::get('{proveedor}/documentos/{documento}', [PadronController::class, 'descargarDocumento'])->middleware('permission:padron-index');
+            Route::delete('{proveedor}/documentos/{documento}', [PadronController::class, 'quitarDocumento'])->middleware('permission:padron-gestionar');
+            Route::post('{proveedor}/cedula', [PadronController::class, 'emitirCedula'])->middleware('permission:padron-gestionar');
+            Route::get('{proveedor}/cedula/pdf', [PadronController::class, 'cedulaPdf'])->middleware('permission:padron-index');
+            Route::post('{proveedor}/{accion}', [PadronController::class, 'cambiarEstado'])->whereIn('accion', ['rechazar', 'suspender', 'reactivar'])->middleware('permission:padron-gestionar');
+        });
+    });
+
+    // Tesorería: mesa de control de pagos (Egresos), pago a proveedores, conciliación bancaria y reportes.
+    Route::prefix('tesoreria')->group(function () {
+        Route::get('mesa', [TesoreriaController::class, 'mesa'])->middleware('permission:tesoreria-index');
+        Route::get('cuentas', [TesoreriaController::class, 'cuentasActivas'])->middleware('permission:tesoreria-index|tesoreria-pagar|ordenes-compra-pagar');
+        Route::post('clc/{ordenCompra}/verificar-sat', [TesoreriaController::class, 'verificarSat'])->whereNumber('ordenCompra')->middleware('permission:tesoreria-index');
+        Route::get('pagos', [TesoreriaController::class, 'listaPagos'])->middleware('permission:tesoreria-index');
+        Route::post('pagos', [TesoreriaController::class, 'pagar'])->middleware('permission:tesoreria-pagar');
+        Route::post('pagos/conciliar-automatico', [TesoreriaController::class, 'conciliarAutomatico'])->middleware('permission:tesoreria-conciliar');
+        Route::whereNumber('pago')->group(function () {
+            Route::get('pagos/{pago}', [TesoreriaController::class, 'pago'])->middleware('permission:tesoreria-index');
+            Route::post('pagos/{pago}/cancelar', [TesoreriaController::class, 'cancelarPago'])->middleware('permission:tesoreria-pagar');
+            Route::post('pagos/{pago}/entregar', [TesoreriaController::class, 'entregar'])->middleware('permission:tesoreria-pagar');
+            Route::post('pagos/{pago}/conciliar', [TesoreriaController::class, 'conciliar'])->middleware('permission:tesoreria-conciliar');
+            Route::post('pagos/{pago}/desconciliar', [TesoreriaController::class, 'desconciliar'])->middleware('permission:tesoreria-conciliar');
+        });
+        Route::get('movimientos', [TesoreriaController::class, 'movimientos'])->middleware('permission:tesoreria-index');
+        Route::get('movimientos/excel', [TesoreriaController::class, 'movimientosExcel'])->middleware('permission:tesoreria-index');
+        Route::get('movimientos/plantilla', [TesoreriaController::class, 'plantillaMovimientos'])->middleware('permission:tesoreria-conciliar');
+        Route::post('movimientos', [TesoreriaController::class, 'guardarMovimiento'])->middleware('permission:tesoreria-conciliar');
+        Route::post('movimientos/importar', [TesoreriaController::class, 'importarMovimientos'])->middleware('permission:tesoreria-conciliar');
+        Route::delete('movimientos/{movimiento}', [TesoreriaController::class, 'eliminarMovimiento'])->whereNumber('movimiento')->middleware('permission:tesoreria-conciliar');
+        Route::get('posicion', [TesoreriaController::class, 'posicion'])->middleware('permission:tesoreria-index');
+        Route::get('posicion/excel', [TesoreriaController::class, 'posicionExcel'])->middleware('permission:tesoreria-index');
+        Route::get('cheques', [TesoreriaController::class, 'cheques'])->middleware('permission:tesoreria-index');
+        Route::get('cheques/excel', [TesoreriaController::class, 'chequesExcel'])->middleware('permission:tesoreria-index');
+    });
+
     Route::get('clc', [ClcController::class, 'index'])->middleware('permission:clc-index');
+    Route::get('clc/excel', [ClcController::class, 'excel'])->middleware('permission:clc-index');
+    // Contabilidad: reporte mensual del ISR retenido (por fecha de pago o de CLC).
+    Route::get('contabilidad/isr', [ContabilidadController::class, 'isr'])->middleware('permission:contabilidad-isr');
+    Route::get('contabilidad/isr/excel', [ContabilidadController::class, 'isrExcel'])->middleware('permission:contabilidad-isr');
     Route::post('clc/accion', [ClcController::class, 'accion'])->middleware('permission:clc-index');
     Route::get('clc/relaciones/{relacion}/pdf', [ClcController::class, 'relacionPdf'])->whereNumber('relacion')->middleware('permission:clc-index');
 

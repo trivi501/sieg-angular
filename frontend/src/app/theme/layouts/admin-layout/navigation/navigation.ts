@@ -84,6 +84,13 @@ export const NavigationItems: NavigationItem[] = [
             permission: 'fondos-index'
           },
           {
+            id: 'contratos',
+            title: 'Arrendamientos y contratos',
+            type: 'item',
+            url: '/contratos',
+            permission: 'contratos-index'
+          },
+          {
             id: 'calendario-captura',
             title: 'Calendario de captura',
             type: 'item',
@@ -161,6 +168,24 @@ export const NavigationItems: NavigationItem[] = [
         permission: 'proveedores-index'
       },
       {
+        id: 'contabilidad-isr',
+        title: 'ISR retenido (Contabilidad)',
+        type: 'item',
+        classes: 'nav-item',
+        url: '/contabilidad/isr',
+        icon: 'audit',
+        permission: 'contabilidad-isr'
+      },
+      {
+        id: 'padron',
+        title: 'Padrón de proveedores (OIC)',
+        type: 'item',
+        classes: 'nav-item',
+        url: '/padron',
+        icon: 'safety-certificate',
+        permission: 'padron-index'
+      },
+      {
         id: 'clc',
         title: 'Trámite de CLC',
         type: 'item',
@@ -177,6 +202,25 @@ export const NavigationItems: NavigationItem[] = [
         url: '/facturas',
         icon: 'file-done',
         permission: 'facturas-index'
+      },
+      {
+        id: 'tesoreria-menu',
+        title: 'Tesorería',
+        type: 'collapse',
+        icon: 'dollar',
+        children: [
+          { id: 'tesoreria-mesa', title: 'Mesa de control de pagos', type: 'item', url: '/tesoreria', permission: 'tesoreria-index' },
+          { id: 'tesoreria-pagos', title: 'Pagos', type: 'item', url: '/tesoreria/pagos', permission: 'tesoreria-index' },
+          { id: 'tesoreria-movimientos', title: 'Movimientos y conciliación', type: 'item', url: '/tesoreria/movimientos', permission: 'tesoreria-index' },
+          { id: 'tesoreria-reportes', title: 'Reportes', type: 'item', url: '/tesoreria/reportes', permission: 'tesoreria-index' },
+          {
+            id: 'tesoreria-cuentas',
+            title: 'Cuentas bancarias',
+            type: 'item',
+            url: '/catalogos/tesoreria-cuentas',
+            permission: 'catalogos-tesoreria-cuentas-index'
+          }
+        ]
       },
       {
         id: 'vehiculos-menu',
@@ -197,6 +241,27 @@ export const NavigationItems: NavigationItem[] = [
             type: 'item',
             url: '/vehiculos/mantenimientos',
             permission: 'vehiculos-mantenimiento'
+          },
+          {
+            id: 'combustible-bitacoras',
+            title: 'Bitácoras de combustible',
+            type: 'item',
+            url: '/combustible/bitacoras',
+            permission: 'combustible-index'
+          },
+          {
+            id: 'combustible',
+            title: 'Cargas del proveedor de combustible',
+            type: 'item',
+            url: '/combustible',
+            permission: ['combustible-cargar', 'combustible-validar']
+          },
+          {
+            id: 'combustible-reporte',
+            title: 'Consumo de combustible',
+            type: 'item',
+            url: '/combustible/reporte',
+            permission: 'combustible-index'
           }
         ]
       }
