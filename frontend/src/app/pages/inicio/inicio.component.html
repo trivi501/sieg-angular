@@ -158,7 +158,10 @@
         <div class="card h-100 mb-0">
           <div class="card-header d-flex justify-content-between">
             <h6 class="mb-0">Mantenimiento vehicular {{ m['año'] }}</h6>
-            <a routerLink="/vehiculos/mantenimientos" class="small">Taller</a>
+            <span class="small d-flex gap-3">
+              <a routerLink="/vehiculos/mantenimientos/reporte">Costo por secretaría</a>
+              <a routerLink="/vehiculos/mantenimientos">Taller</a>
+            </span>
           </div>
           <div class="card-body small">
             <div class="row g-2 mb-2">

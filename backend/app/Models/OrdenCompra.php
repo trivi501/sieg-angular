@@ -13,7 +13,7 @@ class OrdenCompra extends Model
 
     protected $fillable = [
         'id_tb_egreso_requisicion', 'proveedor_id', 'sin_factura', 'tramite_servicio_id', 'folio', 'año', 'folio_completo', 'fecha', 'importe', 'xml_uuid_cancelado',
-        'observaciones', 'user_id', 'xml_path', 'xml_uuid', 'xml_rfc_emisor', 'xml_nombre_emisor',
+        'observaciones', 'user_id', 'xml_path', 'xml_pdf_path', 'xml_uuid', 'xml_rfc_emisor', 'xml_nombre_emisor',
         'xml_serie', 'xml_folio', 'xml_fecha', 'xml_subtotal', 'xml_total', 'xml_isr', 'xml_cargado_at', 'xml_user_id',
         'sat_estado', 'sat_estatus_cancelacion', 'sat_efos', 'sat_verificado_at',
         'pago_fecha', 'pago_forma', 'pago_referencia', 'pago_user_id', 'pago_registrado_at',

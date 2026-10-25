@@ -175,6 +175,8 @@ export interface DetalleRequisicion {
       sat_estatus_cancelacion: string | null;
       sat_efos: boolean;
       sat_verificado_at: string | null;
+      /** Ya tiene su PDF (representación impresa). */
+      pdf: boolean;
     } | null;
     xml_uuid_cancelado: string | null;
     refacturas: { fecha: string | null; usuario: string | null; factura: string; clc_anterior: string | null; clc_nueva: string | null; motivo: string }[];
@@ -217,6 +219,7 @@ export interface DetalleRequisicion {
     | 'cambiarFechaOrden'
     | 'cargarXml'
     | 'descargarXml'
+    | 'cargarPdf'
     | 'verificarSat'
     | 'refacturar'
     | 'cancelarOrden'
@@ -377,6 +380,16 @@ export class RequisicionesService {
 
   pdfOrden(orden: number) {
     return this.http.get(`${this.api}/ordenes-compra/${orden}/pdf`, { responseType: 'blob' });
+  }
+
+  cargarPdfFactura(orden: number, archivo: File) {
+    const datos = new FormData();
+    datos.append('pdf', archivo);
+    return this.http.post<Mensaje>(`${this.api}/ordenes-compra/${orden}/factura-pdf`, datos);
+  }
+
+  descargarPdfFactura(orden: number) {
+    return this.http.get(`${this.api}/ordenes-compra/${orden}/factura-pdf`, { responseType: 'blob' });
   }
 
   descargarXml(orden: number) {

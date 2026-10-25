@@ -126,7 +126,12 @@ final class ExcelCombustible
             ];
         }
 
-        return ['hoja' => $hojaExcel->getTitle(), 'tickets' => $tickets, 'errores' => $errores, 'avisos' => $avisos];
+        $titulo = $hojaExcel->getTitle();
+        // Libera el libro (un mes de tickets ocupa decenas de MB) antes de seguir con lo leído.
+        $libro->disconnectWorksheets();
+        unset($libro, $hojaExcel);
+
+        return ['hoja' => $titulo, 'tickets' => $tickets, 'errores' => $errores, 'avisos' => $avisos];
     }
 
     /** @return array{0: int|null, 1: array<string, string>} Fila del encabezado y letra → campo. */

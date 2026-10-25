@@ -102,6 +102,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('ordenes-compra/{ordenCompra}/pdf', [OrdenCompraController::class, 'pdf'])->middleware('permission:requisiciones-index');
         Route::get('ordenes-compra/{ordenCompra}/xml', [OrdenCompraController::class, 'descargarXml'])->middleware('permission:requisiciones-index');
         Route::post('ordenes-compra/{ordenCompra}/xml', [OrdenCompraController::class, 'cargarXml'])->middleware('permission:ordenes-compra-create|vehiculos-mantenimiento');
+        Route::get('ordenes-compra/{ordenCompra}/factura-pdf', [OrdenCompraController::class, 'descargarPdf'])->middleware('permission:requisiciones-index');
+        Route::post('ordenes-compra/{ordenCompra}/factura-pdf', [OrdenCompraController::class, 'cargarPdf'])->middleware('permission:ordenes-compra-create|vehiculos-mantenimiento');
         Route::post('ordenes-compra/{ordenCompra}/proveedor', [OrdenCompraController::class, 'cambiarProveedor'])->middleware('permission:ordenes-compra-create|vehiculos-mantenimiento');
         Route::post('ordenes-compra/{ordenCompra}/fecha', [OrdenCompraController::class, 'cambiarFecha'])->middleware('permission:ordenes-compra-fecha');
         Route::post('ordenes-compra/{ordenCompra}/verificar-sat', [OrdenCompraController::class, 'verificarSat'])->middleware('permission:ordenes-compra-verificar-sat');
@@ -127,6 +129,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Mantenimiento vehicular (taller).
     Route::get('vehiculos/{vehiculo}/mantenimientos', [VehiculoMantenimientoController::class, 'historial'])->whereNumber('vehiculo')->middleware('permission:catalogos-vehiculos-index|vehiculos-mantenimiento');
+    Route::get('vehiculos/mantenimientos/reporte', [VehiculoMantenimientoController::class, 'reporte'])->middleware('permission:vehiculos-mantenimiento|catalogos-vehiculos-index');
+    Route::get('vehiculos/mantenimientos/reporte/excel', [VehiculoMantenimientoController::class, 'reporteExcel'])->middleware('permission:vehiculos-mantenimiento|catalogos-vehiculos-index');
     Route::get('vehiculos/mantenimientos', [VehiculoMantenimientoController::class, 'index'])->middleware('permission:vehiculos-mantenimiento');
     Route::post('vehiculos/mantenimientos', [VehiculoMantenimientoController::class, 'store'])->middleware('permission:vehiculos-mantenimiento');
     Route::post('vehiculos/mantenimientos/{mantenimiento}/entregar', [VehiculoMantenimientoController::class, 'entregar'])->whereNumber('mantenimiento')->middleware('permission:vehiculos-mantenimiento');
@@ -178,6 +182,8 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::put('{tramite}/facturas/{factura}', [TramiteServicioController::class, 'clasificarFactura'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-create");
             Route::delete('{tramite}/facturas/{factura}', [TramiteServicioController::class, 'quitarFactura'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-create");
             Route::get('{tramite}/facturas/{factura}/xml', [TramiteServicioController::class, 'descargarXml'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-index");
+            Route::post('{tramite}/facturas/{factura}/pdf', [TramiteServicioController::class, 'subirPdf'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-create");
+            Route::get('{tramite}/facturas/{factura}/pdf', [TramiteServicioController::class, 'descargarPdf'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-index");
             Route::post('{tramite}/enviar', [TramiteServicioController::class, 'enviar'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-create");
             Route::post('{tramite}/validar', [TramiteServicioController::class, 'validar'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-validar");
             Route::post('{tramite}/rechazar', [TramiteServicioController::class, 'rechazar'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-validar");

@@ -243,6 +243,13 @@ export const NavigationItems: NavigationItem[] = [
             permission: 'vehiculos-mantenimiento'
           },
           {
+            id: 'mantenimiento-reporte',
+            title: 'Costo de mantenimiento',
+            type: 'item',
+            url: '/vehiculos/mantenimientos/reporte',
+            permission: ['vehiculos-mantenimiento', 'catalogos-vehiculos-index']
+          },
+          {
             id: 'combustible-bitacoras',
             title: 'Bitácoras de combustible',
             type: 'item',

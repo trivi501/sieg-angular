@@ -3,12 +3,17 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\EgresoRequisicion;
+use App\Models\EgresoUnidadAdministrativa;
 use App\Models\Vehiculo;
 use App\Models\VehiculoMantenimiento;
+use App\Services\ExcelTabla;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 /**
  * Mantenimiento vehicular: se recibe el vehículo en el taller (queda "En taller"), desde ahí se hace la
@@ -17,6 +22,10 @@ use Illuminate\Validation\ValidationException;
  */
 class VehiculoMantenimientoController extends Controller
 {
+    public const AGRUPACIONES = ['secretaria' => 'Secretaría', 'vehiculo' => 'Vehículo'];
+
+    private const FORMATO_IMPORTE = '#,##0.00;[Red]-#,##0.00';
+
     public function index(Request $request): JsonResponse
     {
         $filtros = $request->only('buscar', 'estado');
@@ -55,7 +64,7 @@ class VehiculoMantenimientoController extends Controller
                 'requisicion' => $m->requisicion?->folio_completo,
                 'requisicion_estado' => $m->requisicion?->catEgresoRequisicionEstado?->descripcion,
                 // Cancelada: el taller puede hacer otra que la sustituya.
-                'requisicion_cancelada' => (int) $m->requisicion?->id_cat_egreso_requisicion_estado === \App\Models\EgresoRequisicion::CANCELADA,
+                'requisicion_cancelada' => (int) $m->requisicion?->id_cat_egreso_requisicion_estado === EgresoRequisicion::CANCELADA,
             ]);
 
         // Vehículos que se pueden recibir: activos, con secretaría de resguardo y que no estén ya en el taller.
@@ -106,15 +115,7 @@ class VehiculoMantenimientoController extends Controller
             ->orderByDesc('fecha_recepcion')->orderByDesc('id')->get()
             ->map(function (VehiculoMantenimiento $m) {
                 $req = $m->requisicion;
-                // Una orden cancelada no cuenta: si la requisición sigue viva, vale su total (estimado).
-                $orden = $req?->ordenCompra && ! $req->ordenCompra->cancelada_at ? $req->ordenCompra : null;
-                [$costo, $situacion] = match (true) {
-                    $req === null => [0.0, 'sin_requisicion'],
-                    $req->cancelada_at !== null => [0.0, 'cancelado'],
-                    $orden && $orden->pago_registrado_at => [(float) $orden->importe, 'pagado'],
-                    $orden !== null => [(float) $orden->importe, 'comprometido'],
-                    default => [(float) $req->total, 'estimado'],
-                };
+                [$costo, $situacion, $orden] = $m->costo();
 
                 return [
                     'id' => $m->id,
@@ -129,7 +130,7 @@ class VehiculoMantenimientoController extends Controller
                     'requisicion' => $req?->folio_completo,
                     'requisicion_estado' => $req?->catEgresoRequisicionEstado?->descripcion,
                     'orden' => $orden?->folio_completo,
-                    'costo' => round($costo, 2),
+                    'costo' => $costo,
                     'situacion' => $situacion,
                 ];
             });
@@ -151,6 +152,49 @@ class VehiculoMantenimientoController extends Controller
                 'total' => $suma('pagado', 'comprometido', 'estimado'),
             ],
         ]);
+    }
+
+    /**
+     * Costo del mantenimiento vehicular por secretaría de resguardo (o por vehículo) en un periodo, por la fecha en
+     * que se recibió en el taller. El costo de cada servicio es el de VehiculoMantenimiento::costo().
+     */
+    public function reporte(Request $request): JsonResponse
+    {
+        [$filas, $filtros, $todas] = $this->datosReporte($request);
+
+        return response()->json([
+            'filas' => $filas,
+            'totales' => collect(['servicios', 'preventivos', 'correctivos', 'pagado', 'comprometido', 'estimado', 'total'])
+                ->mapWithKeys(fn ($c) => [$c => round($filas->sum($c), 2)]),
+            'agrupaciones' => self::AGRUPACIONES,
+            'filtros' => $filtros,
+            'unidades' => $todas ? EgresoUnidadAdministrativa::where('activo', true)->orderBy('clave')->get(['id_cat_egreso_unidad_administrativa as id', 'clave', 'nombre']) : [],
+        ]);
+    }
+
+    public function reporteExcel(Request $request)
+    {
+        [$filas, $filtros] = $this->datosReporte($request);
+        $vehiculo = $filtros['agrupar'] === 'vehiculo';
+        // Por vehículo va su secretaría en la 2.ª columna y no la cuenta de vehículos: los importes quedan en 6 a 9.
+        $conteos = $vehiculo ? [3, 4, 5] : [2, 3, 4, 5];
+        $libro = ExcelTabla::libro(
+            'Costo de mantenimiento vehicular por '.mb_strtolower(self::AGRUPACIONES[$filtros['agrupar']]),
+            $filtros['descripcion'],
+            [self::AGRUPACIONES[$filtros['agrupar']], ...($vehiculo ? ['Secretaría'] : []), 'Servicios', 'Preventivos', 'Correctivos', ...($vehiculo ? [] : ['Vehículos']),
+                'Pagado', 'Comprometido', 'Estimado', 'Total'],
+            $filas->map(fn ($f) => [$f['grupo'], ...($vehiculo ? [$f['secretaria']] : []), $f['servicios'], $f['preventivos'], $f['correctivos'],
+                ...($vehiculo ? [] : [$f['vehiculos']]), $f['pagado'], $f['comprometido'], $f['estimado'], $f['total']]),
+            array_fill_keys($conteos, '#,##0') + array_fill_keys([6, 7, 8, 9], self::FORMATO_IMPORTE),
+            [...array_slice($conteos, 0, 3), 6, 7, 8, 9],
+            $vehiculo ? [40, 40, 11, 12, 12, 16, 16, 16, 16] : [48, 11, 12, 12, 11, 16, 16, 16, 16],
+        );
+
+        return response()->streamDownload(
+            fn () => (new Xlsx($libro))->save('php://output'),
+            "costo_mantenimiento_por_{$filtros['agrupar']}_".now('America/Mexico_City')->format('Ymd_Hi').'.xlsx',
+            ['Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+        );
     }
 
     /** Recibe el vehículo en el taller (folio MV-AÑO-0001); el vehículo queda "En taller". */
@@ -221,5 +265,70 @@ class VehiculoMantenimientoController extends Controller
         });
 
         return response()->json(['message' => "Vehículo del {$mantenimiento->folio_completo} entregado."]);
+    }
+
+    /**
+     * Servicios del periodo agrupados. Cuentan los cancelados (con costo cero) para que se vea cuántos se pidieron;
+     * el costo solo suma lo vigente.
+     *
+     * @return array{0: Collection, 1: array, 2: bool}
+     */
+    private function datosReporte(Request $request): array
+    {
+        $validated = $request->validate([
+            'desde' => 'nullable|date',
+            'hasta' => 'nullable|date|after_or_equal:desde',
+            'agrupar' => 'nullable|in:'.implode(',', array_keys(self::AGRUPACIONES)),
+            'unidad' => 'nullable|integer',
+        ]);
+        $agrupar = $validated['agrupar'] ?? 'secretaria';
+        $desde = $validated['desde'] ?? now('America/Mexico_City')->startOfYear()->toDateString();
+        $hasta = $validated['hasta'] ?? now('America/Mexico_City')->toDateString();
+        $unidad = filled($validated['unidad'] ?? null) ? EgresoUnidadAdministrativa::find($validated['unidad']) : null;
+        // Como en el panel: el taller y los administradores ven todas las secretarías; los demás, la suya.
+        $user = $request->user();
+        $propias = $user->can('vehiculos-mantenimiento') || $user->hasRole(['Super Admin', 'Admin'])
+            ? null : (EgresoUnidadAdministrativa::idsMismaClave($user->id_cat_egreso_unidad_administrativa) ?: [0]);
+
+        $servicios = VehiculoMantenimiento::query()
+            ->with(['vehiculo', 'unidadAdministrativa:id_cat_egreso_unidad_administrativa,clave,nombre',
+                'requisicion:id_tb_egreso_requisicion,total,cancelada_at', 'requisicion.ordenCompra'])
+            ->whereBetween('fecha_recepcion', [$desde, $hasta])
+            ->when($unidad, fn ($q) => $q->whereIn('id_cat_egreso_unidad_administrativa', EgresoUnidadAdministrativa::idsMismaClave($unidad->id_cat_egreso_unidad_administrativa)))
+            ->when($propias !== null, fn ($q) => $q->whereIn('id_cat_egreso_unidad_administrativa', $propias))
+            ->get();
+
+        $secretaria = fn (VehiculoMantenimiento $m) => $m->unidadAdministrativa ? trim($m->unidadAdministrativa->clave.' — '.$m->unidadAdministrativa->nombre) : 'SIN SECRETARÍA';
+        $filas = $servicios
+            ->groupBy(fn (VehiculoMantenimiento $m) => $agrupar === 'vehiculo' ? $m->vehiculo_id.'|'.$secretaria($m) : $secretaria($m))
+            ->map(function ($grupo) use ($agrupar, $secretaria) {
+                $primero = $grupo->first();
+                $costos = $grupo->map(fn (VehiculoMantenimiento $m) => $m->costo());
+                $suma = fn (string $situacion) => round($costos->where(1, $situacion)->sum(0), 2);
+
+                return [
+                    'grupo' => $agrupar === 'vehiculo' ? $primero->textoVehiculo() : $secretaria($primero),
+                    'vehiculo_id' => $agrupar === 'vehiculo' ? $primero->vehiculo_id : null,
+                    'secretaria' => $secretaria($primero),
+                    'servicios' => $grupo->count(),
+                    'preventivos' => $grupo->where('tipo', 'preventivo')->count(),
+                    'correctivos' => $grupo->where('tipo', 'correctivo')->count(),
+                    'vehiculos' => $grupo->pluck('vehiculo_id')->unique()->count(),
+                    'pagado' => $suma('pagado'),
+                    'comprometido' => $suma('comprometido'),
+                    'estimado' => $suma('estimado'),
+                    'total' => round($costos->sum(0), 2),
+                ];
+            })
+            ->sortByDesc('total')->values();
+
+        return [$filas, [
+            'desde' => $desde,
+            'hasta' => $hasta,
+            'agrupar' => $agrupar,
+            'unidad' => $unidad?->id_cat_egreso_unidad_administrativa,
+            'descripcion' => 'Del '.date('d/m/Y', strtotime($desde)).' al '.date('d/m/Y', strtotime($hasta)).' · '
+                .($unidad ? trim($unidad->clave.' '.$unidad->nombre) : ($propias === null ? 'Todas las secretarías' : 'Tu secretaría')),
+        ], $propias === null];
     }
 }

@@ -76,6 +76,11 @@ export interface FacturaTramite {
   partida: string | null;
   nombre_partida: string | null;
   concepto: string | null;
+  /** Fondo: tipo de gasto (viáticos llevan la comisión). */
+  tipo_gasto: string | null;
+  comision: string | null;
+  /** Ya tiene su PDF (representación impresa). */
+  pdf: boolean;
   clasificada: boolean;
 }
 
@@ -122,6 +127,9 @@ export interface DetalleTramite {
     orden: { id: number; folio: string; clc: string | null; clc_estado: string | null } | null;
   };
   facturas: FacturaTramite[];
+  /** Fondo: catálogo de tipos de gasto y cuánto va de cada uno. */
+  tipos_gasto: Record<string, string> | null;
+  por_tipo_gasto: { tipo: string | null; nombre: string; facturas: number; importe: number }[];
   lineas: LineaTramite[];
   puede: { editar: boolean; enviar: boolean; validar: boolean; cancelar: boolean; documentos: boolean };
   /** Solo en una bitácora de combustible: sus facturas del Excel del proveedor y sus tickets. */
@@ -177,6 +185,16 @@ export class ServiciosService {
 
   descargarXml(tipo: TipoTramite, id: number, factura: number) {
     return this.http.get(`${this.api(tipo)}/${id}/facturas/${factura}/xml`, { responseType: 'blob' });
+  }
+
+  subirPdf(tipo: TipoTramite, id: number, factura: number, archivo: File) {
+    const datos = new FormData();
+    datos.append('pdf', archivo);
+    return this.http.post<Mensaje>(`${this.api(tipo)}/${id}/facturas/${factura}/pdf`, datos);
+  }
+
+  descargarPdf(tipo: TipoTramite, id: number, factura: number) {
+    return this.http.get(`${this.api(tipo)}/${id}/facturas/${factura}/pdf`, { responseType: 'blob' });
   }
 
   accion(tipo: TipoTramite, id: number, accion: 'enviar' | 'validar' | 'rechazar' | 'cancelar', datos: object = {}) {

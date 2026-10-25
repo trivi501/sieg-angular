@@ -173,8 +173,16 @@ class TramiteServicioController extends Controller
                 'partida' => $f->partida,
                 'nombre_partida' => $f->partida ? ($nombres[trim($f->partida)] ?? null) : null,
                 'concepto' => $f->concepto,
+                'tipo_gasto' => $f->tipo_gasto,
+                'comision' => $f->comision,
+                'pdf' => $f->pdf_path !== null,
                 'clasificada' => $f->clasificada($fondo),
             ]),
+            // Fondo: catálogo de tipos de gasto y cuánto va de cada uno.
+            'tipos_gasto' => $fondo ? TramiteServicio::TIPOS_GASTO_FONDO : null,
+            'por_tipo_gasto' => $fondo ? $tramite->facturas->groupBy(fn ($f) => $f->tipo_gasto ?? '')
+                ->map(fn ($g, $tipo) => ['tipo' => $tipo ?: null, 'nombre' => TramiteServicio::TIPOS_GASTO_FONDO[$tipo] ?? 'Sin clasificar', 'facturas' => $g->count(),
+                    'importe' => round($g->sum(fn ($f) => $f->importe()), 2)])->sortByDesc('importe')->values() : [],
             // Líneas de presupuesto de la secretaría para clasificar (solo mientras se captura).
             'lineas' => $editable ? app(PresupuestoService::class)->lineas([$clave])
                 ->map(fn ($l) => collect($l)->only(['fuente', 'nombre_fuente', 'proyecto', 'nombre_proyecto', 'partida', 'nombre_partida', 'disponible']))
@@ -258,11 +266,18 @@ class TramiteServicioController extends Controller
         if ($tramite->esFondo()) {
             $validated = $request->validate([
                 'concepto' => 'required|string|max:3000',
+                'tipo_gasto' => 'required|in:'.implode(',', array_keys(TramiteServicio::TIPOS_GASTO_FONDO)),
+                'comision' => 'nullable|required_if:tipo_gasto,viaticos|string|max:2000',
                 'articulos' => 'required|array',
                 'articulos.*.partida' => 'nullable|string|max:200',
                 'articulos.*.proyecto' => 'nullable|string|max:200',
                 'articulos.*.fuente' => 'nullable|string|max:200',
-            ], ['concepto.required' => 'Captura el concepto de la factura.']);
+            ], [
+                'concepto.required' => 'Captura el concepto de la factura.',
+                'tipo_gasto.required' => 'Elige el tipo de gasto.',
+                'tipo_gasto.in' => 'Elige un tipo de gasto de la lista.',
+                'comision.required_if' => 'En viáticos captura la comisión: destino, fechas y motivo.',
+            ]);
             $articulos = $factura->conceptos ?? [];
             if (count($validated['articulos']) !== count($articulos)) {
                 throw ValidationException::withMessages(['articulos' => 'La clasificación no coincide con los artículos de la factura.']);
@@ -273,7 +288,8 @@ class TramiteServicioController extends Controller
                 }
                 $articulos[$i] = [...$articulos[$i], 'partida' => $a['partida'] ?? null, 'proyecto' => $a['proyecto'] ?? null, 'fuente' => $a['fuente'] ?? null];
             }
-            $factura->update(['conceptos' => $articulos, 'concepto' => mb_strtoupper(trim($validated['concepto']))]);
+            $factura->update(['conceptos' => $articulos, 'concepto' => mb_strtoupper(trim($validated['concepto'])), 'tipo_gasto' => $validated['tipo_gasto'],
+                'comision' => $validated['tipo_gasto'] === 'viaticos' ? mb_strtoupper(trim($validated['comision'])) : null]);
 
             return response()->json(['message' => 'Artículos clasificados.']);
         }
@@ -296,14 +312,14 @@ class TramiteServicioController extends Controller
     {
         $this->exigirEditable($tramite);
         abort_unless($factura->tramite_servicio_id === $tramite->id, 404);
-        $ruta = $factura->xml_path;
+        $rutas = array_filter([$factura->xml_path, $factura->pdf_path]);
         DB::transaction(function () use ($tramite, $factura) {
             $factura->delete();
             if (! $tramite->esFondo() && ! $tramite->facturas()->exists()) {
                 $tramite->update(['proveedor_rfc' => null, 'proveedor_nombre' => null]);
             }
         });
-        Storage::disk('local')->delete($ruta);
+        Storage::disk('local')->delete($rutas);
 
         return response()->json(['message' => 'Factura quitada.']);
     }
@@ -314,6 +330,27 @@ class TramiteServicioController extends Controller
         abort_unless($factura->tramite_servicio_id === $tramite->id && Storage::disk('local')->exists($factura->xml_path), 404);
 
         return Storage::disk('local')->download($factura->xml_path, "{$factura->uuid}.xml", ['Content-Type' => 'application/xml']);
+    }
+
+    /** PDF (representación impresa) de una factura del trámite; si ya tenía uno, lo sustituye. */
+    public function subirPdf(Request $request, TramiteServicio $tramite, TramiteServicioFactura $factura): JsonResponse
+    {
+        $this->exigirEditable($tramite);
+        abort_unless($factura->tramite_servicio_id === $tramite->id, 404);
+        $request->validate(['pdf' => 'required|file|mimes:pdf|max:5120'], ['pdf.mimes' => 'El archivo debe ser un PDF.', 'pdf.max' => 'El PDF puede ser de hasta 5 MB.']);
+        $ruta = "tramites-servicio/{$tramite->año}/{$tramite->folio_completo}_{$factura->uuid}.pdf";
+        Storage::disk('local')->put($ruta, file_get_contents($request->file('pdf')->getRealPath()));
+        $factura->update(['pdf_path' => $ruta]);
+
+        return response()->json(['message' => 'PDF de la factura guardado.']);
+    }
+
+    public function descargarPdf(TramiteServicio $tramite, TramiteServicioFactura $factura)
+    {
+        $this->autorizar($tramite);
+        abort_unless($factura->tramite_servicio_id === $tramite->id && $factura->pdf_path && Storage::disk('local')->exists($factura->pdf_path), 404);
+
+        return Storage::disk('local')->download($factura->pdf_path, "{$factura->uuid}.pdf", ['Content-Type' => 'application/pdf']);
     }
 
     /** El área lo envía a validar: con facturas clasificadas, y el proveedor registrado (servicio) o el trabajador (fondo). */
@@ -327,7 +364,7 @@ class TramiteServicioController extends Controller
         }
         if ($sinClasificar = $tramite->facturas->reject(fn ($f) => $f->clasificada($fondo))->count()) {
             return $this->error($fondo
-                ? "Falta asignar partida, proyecto y fuente a los artículos (y el concepto) de {$sinClasificar} factura(s)."
+                ? "Falta el tipo de gasto (en viáticos, la comisión), el concepto o la partida, proyecto y fuente de los artículos de {$sinClasificar} factura(s)."
                 : "Falta asignar partida, proyecto, fuente y concepto a {$sinClasificar} factura(s).");
         }
         if ($fondo && ! $tramite->trabajador_nombre) {

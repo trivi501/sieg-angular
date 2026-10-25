@@ -276,6 +276,35 @@ export class OrdenCompraComponent {
     });
   }
 
+  cargarPdfFactura(evento: Event): void {
+    const o = this.orden();
+    const input = evento.target as HTMLInputElement;
+    const archivo = input.files?.[0];
+    if (!o || !archivo) return;
+    this.ocupado.set(true);
+    this.servicio.cargarPdfFactura(o.id, archivo).subscribe({
+      next: (r) => {
+        this.ocupado.set(false);
+        input.value = '';
+        this.actualizado.emit({ tipo: 'success', texto: r.message });
+      },
+      error: (e: HttpErrorResponse) => {
+        this.ocupado.set(false);
+        input.value = '';
+        const { campos, mensaje } = erroresDe(e);
+        this.actualizado.emit({ tipo: 'danger', texto: campos['pdf'] ?? mensaje });
+      }
+    });
+  }
+
+  descargarPdfFactura(): void {
+    const o = this.orden()!;
+    this.servicio.descargarPdfFactura(o.id).subscribe({
+      next: (blob) => abrirBlob(blob, `${o.folio}_factura.pdf`),
+      error: () => this.actualizado.emit({ tipo: 'danger', texto: 'No se encontró el PDF de la factura.' })
+    });
+  }
+
   descargarXml(): void {
     const o = this.orden()!;
     this.servicio.descargarXml(o.id).subscribe({

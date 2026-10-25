@@ -13,12 +13,12 @@ class TramiteServicioFactura extends Model
     protected $table = 'tramite_servicio_facturas';
 
     protected $fillable = [
-        'tramite_servicio_id', 'xml_path', 'uuid', 'rfc_emisor', 'nombre_emisor', 'rfc_receptor', 'serie', 'folio', 'fecha',
+        'tramite_servicio_id', 'xml_path', 'pdf_path', 'uuid', 'rfc_emisor', 'nombre_emisor', 'rfc_receptor', 'serie', 'folio', 'fecha',
         'subtotal', 'descuento', 'iva', 'ieps', 'isr', 'total', 'conceptos', 'sat_estado', 'sat_verificado_at',
-        'fuente', 'proyecto', 'partida', 'concepto',
+        'fuente', 'proyecto', 'partida', 'concepto', 'tipo_gasto', 'comision',
     ];
 
-    protected $hidden = ['xml_path'];
+    protected $hidden = ['xml_path', 'pdf_path'];
 
     protected function casts(): array
     {
@@ -63,10 +63,10 @@ class TramiteServicioFactura extends Model
     public function clasificada(bool $porArticulo = false): bool
     {
         if ($porArticulo) {
-            // Fondo revolvente: cada artículo con su partida, proyecto y fuente.
+            // Fondo revolvente: tipo de gasto (viáticos, con su comisión) y cada artículo con su partida, proyecto y fuente.
             $articulos = $this->conceptos ?? [];
 
-            return filled($this->concepto) && $articulos !== []
+            return filled($this->concepto) && filled($this->tipo_gasto) && ($this->tipo_gasto !== 'viaticos' || filled($this->comision)) && $articulos !== []
                 && collect($articulos)->every(fn ($a) => filled($a['partida'] ?? null) && filled($a['proyecto'] ?? null) && filled($a['fuente'] ?? null));
         }
 

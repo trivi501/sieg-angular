@@ -36,6 +36,9 @@ class CombustibleController extends Controller
 
     private const FORMATO_IMPORTE = '#,##0.00;[Red]-#,##0.00';
 
+    /** Memoria para generar la bitácora en PDF (si PHP tiene menos). */
+    private const MEMORIA_PDF = '1024M';
+
     private const FORMATO_LITROS = '#,##0.000';
 
     private const AGRUPACIONES = ['secretaria' => 'Secretaría', 'vehiculo' => 'Vehículo', 'mes' => 'Mes', 'producto' => 'Producto'];
@@ -355,6 +358,10 @@ class CombustibleController extends Controller
         $this->autorizar($tramite);
         $tramite->load('unidadAdministrativa', 'lote', 'requisicion:id_tb_egreso_requisicion,folio_completo', 'ordenCompra');
         $tickets = collect($this->filasBitacora($tramite));
+        // dompdf con cientos de tickets pasa de 100 MB: con el límite común de PHP (128 MB) no alcanza.
+        if (self::bytes(ini_get('memory_limit')) !== -1 && self::bytes(ini_get('memory_limit')) < self::bytes(self::MEMORIA_PDF)) {
+            ini_set('memory_limit', self::MEMORIA_PDF);
+        }
         $pdf = Pdf::loadView('combustible.bitacora', [
             'tramite' => $tramite,
             'tickets' => $tickets,
@@ -588,5 +595,22 @@ class CombustibleController extends Controller
         }
         abort_unless(in_array((int) $tramite->id_cat_egreso_unidad_administrativa, EgresoUnidadAdministrativa::idsMismaClave($user->id_cat_egreso_unidad_administrativa), true), 403,
             'No pertenece a tu secretaría.');
+    }
+
+    /** memory_limit de PHP ("128M", "1G", "-1") en bytes; -1 es sin límite. */
+    private static function bytes(string|false $valor): int
+    {
+        $valor = trim((string) $valor);
+        if ($valor === '' || $valor === '-1') {
+            return -1;
+        }
+        $numero = (int) $valor;
+
+        return match (strtoupper(substr($valor, -1))) {
+            'G' => $numero * 1024 ** 3,
+            'M' => $numero * 1024 ** 2,
+            'K' => $numero * 1024,
+            default => $numero,
+        };
     }
 }

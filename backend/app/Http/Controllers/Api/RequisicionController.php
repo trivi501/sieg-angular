@@ -261,6 +261,7 @@ class RequisicionController extends Controller
                     'sat_estatus_cancelacion' => $oc->sat_estatus_cancelacion,
                     'sat_efos' => (bool) $oc->sat_efos,
                     'sat_verificado_at' => $oc->sat_verificado_at?->toIso8601String(),
+                    'pdf' => $oc->xml_pdf_path !== null,
                 ] : null,
                 'xml_uuid_cancelado' => $oc->xml_uuid_cancelado,
                 'refacturas' => $oc->refacturas()->with('usuario:id,name')->reorder('id', 'desc')->get()->map(fn ($r) => [
@@ -322,6 +323,7 @@ class RequisicionController extends Controller
                 // Trámite de servicios: la orden ya trae sus facturas (en el trámite); no se sube XML aparte.
                 'cargarXml' => $compra && ! $compra->tramite_servicio_id && ! $compra->cancelada_at && ! $compra->xml_uuid && ($user->can('ordenes-compra-create') || $taller),
                 'descargarXml' => $oc && $oc->xml_path !== null,
+                'cargarPdf' => $compra && ! $compra->tramite_servicio_id && ! $compra->cancelada_at && $compra->xml_uuid && ($user->can('ordenes-compra-create') || $taller),
                 'verificarSat' => $oc && $oc->xml_uuid && $user->can('ordenes-compra-verificar-sat'),
                 'refacturar' => $oc && $oc->xml_uuid && ! $oc->cancelada_at && ! ($oc->pago_fecha && ! $oc->clc_cancelada_at) && $user->can('ordenes-compra-refacturar'),
                 'cancelarOrden' => $compra && ! $compra->cancelada_at && ! $compra->clcActiva() && $user->can('ordenes-compra-cancelar'),

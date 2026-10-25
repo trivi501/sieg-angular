@@ -66,6 +66,29 @@ class VehiculoMantenimiento extends Model
         return $this->belongsTo(User::class, 'user_id');
     }
 
+    /**
+     * Costo del mantenimiento y de dónde sale: el importe de su orden de compra (pagado o comprometido); si aún no
+     * hay orden, el total de la requisición (estimado); cero si no tiene requisición o se canceló. Requiere
+     * requisicion.ordenCompra cargado.
+     *
+     * @return array{0: float, 1: string, 2: ?OrdenCompra}
+     */
+    public function costo(): array
+    {
+        $req = $this->requisicion;
+        // Una orden cancelada no cuenta: si la requisición sigue viva, vale su total (estimado).
+        $orden = $req?->ordenCompra && ! $req->ordenCompra->cancelada_at ? $req->ordenCompra : null;
+        [$costo, $situacion] = match (true) {
+            $req === null => [0.0, 'sin_requisicion'],
+            $req->cancelada_at !== null => [0.0, 'cancelado'],
+            $orden && $orden->pago_registrado_at => [(float) $orden->importe, 'pagado'],
+            $orden !== null => [(float) $orden->importe, 'comprometido'],
+            default => [(float) $req->total, 'estimado'],
+        };
+
+        return [round($costo, 2), $situacion, $orden];
+    }
+
     /** Texto corto del vehículo para el concepto de la requisición y las listas. */
     public function textoVehiculo(): string
     {

@@ -14,7 +14,7 @@ class Cfdi
 {
     /**
      * @return array{tipo: ?string, uuid: ?string, serie: ?string, folio: ?string, fecha: ?string, rfc_emisor: ?string,
-     *   nombre_emisor: ?string, rfc_receptor: ?string, subtotal: float, descuento: float, iva: float, ieps: float, isr: float, total: float,
+     *   nombre_emisor: ?string, rfc_receptor: ?string, regimen_receptor: ?string, uso_cfdi: ?string, subtotal: float, descuento: float, iva: float, ieps: float, isr: float, total: float,
      *   sello: ?string, conceptos: array<int, array<string, mixed>>}
      */
     public static function leer(string $contenido): array
@@ -117,6 +117,9 @@ class Cfdi
             'rfc_emisor' => $attr($emisor, 'Rfc') ? mb_strtoupper($attr($emisor, 'Rfc')) : null,
             'nombre_emisor' => $attr($emisor, 'Nombre'),
             'rfc_receptor' => $attr($receptor, 'Rfc') ? mb_strtoupper($attr($receptor, 'Rfc')) : null,
+            // CFDI 4.0 (el 3.3 no trae el régimen del receptor).
+            'regimen_receptor' => $attr($receptor, 'RegimenFiscalReceptor'),
+            'uso_cfdi' => $attr($receptor, 'UsoCFDI') ? mb_strtoupper($attr($receptor, 'UsoCFDI')) : null,
             'subtotal' => $num($comprobante, 'SubTotal'),
             'descuento' => $num($comprobante, 'Descuento'),
             'iva' => round($iva, 2),
@@ -126,5 +129,30 @@ class Cfdi
             'sello' => $attr($comprobante, 'Sello'),
             'conceptos' => $conceptos,
         ];
+    }
+
+    /**
+     * Receptor de la factura: el RFC del Ayuntamiento, su régimen fiscal y un uso de CFDI aceptado
+     * (config services.sat). Lo que el XML no trae (CFDI 3.3) no se revisa.
+     *
+     * @return string[] Los errores
+     */
+    public static function erroresReceptor(array $cfdi): array
+    {
+        $errores = [];
+        $rfc = (string) config('services.sat.rfc_receptor');
+        if ($rfc && $cfdi['rfc_receptor'] && $cfdi['rfc_receptor'] !== $rfc) {
+            $errores[] = "La factura está a nombre de {$cfdi['rfc_receptor']}, no del Ayuntamiento ({$rfc}).";
+        }
+        $regimen = (string) config('services.sat.regimen_receptor');
+        if ($regimen && filled($cfdi['regimen_receptor'] ?? null) && $cfdi['regimen_receptor'] !== $regimen) {
+            $errores[] = "El régimen fiscal del receptor es {$cfdi['regimen_receptor']}; el del Ayuntamiento es {$regimen}: el proveedor debe refacturar.";
+        }
+        $usos = (array) config('services.sat.usos_cfdi');
+        if ($usos && filled($cfdi['uso_cfdi'] ?? null) && ! in_array($cfdi['uso_cfdi'], $usos, true)) {
+            $errores[] = "El uso de CFDI es {$cfdi['uso_cfdi']}; se aceptan ".implode(', ', $usos).': el proveedor debe refacturar.';
+        }
+
+        return $errores;
     }
 }

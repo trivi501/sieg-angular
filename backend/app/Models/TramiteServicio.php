@@ -37,6 +37,17 @@ class TramiteServicio extends Model
     /** Monto máximo de cada factura de un fondo revolvente (Total del CFDI). */
     public const LIMITE_FACTURA_FONDO = 2000.00;
 
+    /** Fondo revolvente: tipo de gasto de cada factura. Los viáticos llevan además su comisión (destino, fechas y motivo). */
+    public const TIPOS_GASTO_FONDO = [
+        'viaticos' => 'Viáticos',
+        'alimentos' => 'Alimentos y bebidas',
+        'papeleria' => 'Papelería y consumibles',
+        'limpieza' => 'Material de limpieza',
+        'mantenimiento' => 'Mantenimiento y refacciones menores',
+        'transporte' => 'Transporte, casetas y estacionamiento',
+        'otros' => 'Otros gastos menores',
+    ];
+
     /** Estados en los que el área todavía puede subir, quitar o clasificar facturas. */
     public const EDITABLES = ['captura', 'rechazado'];
 

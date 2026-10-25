@@ -9,6 +9,7 @@ use App\Models\OrdenCompra;
 use App\Models\OrdenCompraRefactura;
 use App\Models\Proveedor;
 use App\Models\VehiculoMantenimiento;
+use App\Services\Cfdi;
 use App\Services\EstadoCfdiSat;
 use App\Services\TramiteClc;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -282,6 +283,8 @@ class OrdenCompraController extends Controller
         if ($ordenCompra->proveedor->rfc && $cfdi['rfc_emisor'] && mb_strtoupper($cfdi['rfc_emisor']) !== $ordenCompra->proveedor->rfc) {
             $errores[] = "La factura la emite {$cfdi['rfc_emisor']}, pero el proveedor de la orden es {$ordenCompra->proveedor->rfc}.";
         }
+        // A nombre del Ayuntamiento, con su régimen fiscal y un uso de CFDI aceptado.
+        $errores = [...$errores, ...Cfdi::erroresReceptor(Cfdi::leer($contenido))];
         if (! $cfdi['uuid']) {
             $errores[] = 'El XML no trae timbre fiscal (UUID); no es un CFDI timbrado.';
         } else {
@@ -635,7 +638,7 @@ class OrdenCompraController extends Controller
             $ordenCompra->update([
                 'xml_path' => null, 'xml_uuid' => null, 'xml_rfc_emisor' => null, 'xml_nombre_emisor' => null,
                 'xml_serie' => null, 'xml_folio' => null, 'xml_fecha' => null, 'xml_subtotal' => null, 'xml_total' => null,
-                'xml_isr' => null, 'xml_cargado_at' => null, 'xml_user_id' => null,
+                'xml_isr' => null, 'xml_cargado_at' => null, 'xml_user_id' => null, 'xml_pdf_path' => null,
                 'sat_estado' => null, 'sat_estatus_cancelacion' => null, 'sat_efos' => null, 'sat_verificado_at' => null,
                 'clc_folio' => null, 'clc_año' => null, 'clc_folio_completo' => null, 'clc_fecha' => null, 'clc_user_id' => null,
                 'clc_generada_at' => null, 'clc_estado' => null, 'clc_relacion_id' => null,
@@ -689,6 +692,36 @@ class OrdenCompraController extends Controller
         abort_unless($ordenCompra->xml_path && Storage::disk('local')->exists($ordenCompra->xml_path), 404);
 
         return Storage::disk('local')->download($ordenCompra->xml_path, "{$ordenCompra->folio_completo}.xml");
+    }
+
+    /** PDF (representación impresa) de la factura ya cargada; si ya había uno, lo sustituye. */
+    public function cargarPdf(Request $request, OrdenCompra $ordenCompra): JsonResponse
+    {
+        $this->exigirComprasOTaller($ordenCompra->requisicion);
+        if ($ordenCompra->cancelada_at) {
+            return $this->error('La orden de compra está cancelada.');
+        }
+        if (! $ordenCompra->xml_uuid) {
+            return $this->error('Primero carga el XML de la factura.');
+        }
+        $request->validate(['pdf' => 'required|file|mimes:pdf|max:5120'], ['pdf.mimes' => 'El archivo debe ser un PDF.', 'pdf.max' => 'El PDF puede ser de hasta 5 MB.']);
+
+        $ruta = "ordenes-compra/{$ordenCompra->año}/{$ordenCompra->folio_completo}_{$ordenCompra->xml_uuid}.pdf";
+        Storage::disk('local')->put($ruta, file_get_contents($request->file('pdf')->getRealPath()));
+        $ordenCompra->update(['xml_pdf_path' => $ruta]);
+        $requisicion = $ordenCompra->requisicion;
+        $this->bitacora($requisicion, (int) $requisicion->id_cat_egreso_requisicion_estado,
+            "PDF de la factura {$ordenCompra->xml_uuid} cargado por ".$request->user()->name.'.');
+
+        return response()->json(['message' => 'PDF de la factura guardado.']);
+    }
+
+    public function descargarPdf(OrdenCompra $ordenCompra)
+    {
+        $this->autorizarArea($ordenCompra->requisicion);
+        abort_unless($ordenCompra->xml_pdf_path && Storage::disk('local')->exists($ordenCompra->xml_pdf_path), 404);
+
+        return Storage::disk('local')->download($ordenCompra->xml_pdf_path, "{$ordenCompra->folio_completo}.pdf", ['Content-Type' => 'application/pdf']);
     }
 
     private function motivo(Request $request): string

@@ -149,6 +149,9 @@ class GeneradorTramiteServicio
         $renglones = [];
         foreach ($facturas as $f) {
             $factura = 'Factura '.($f->serieFolio() ?? $f->uuid).($tramite->esFondo() && $f->nombre_emisor ? " ({$f->nombre_emisor})" : '');
+            // Fondo: el tipo de gasto en la descripción (y la comisión de los viáticos).
+            $tipoGasto = $tramite->esFondo() && $f->tipo_gasto
+                ? ' — '.mb_strtoupper(TramiteServicio::TIPOS_GASTO_FONDO[$f->tipo_gasto] ?? $f->tipo_gasto).($f->comision ? ': '.$f->comision : '') : '';
             if (! $tramite->esFondo()) {
                 $renglones[] = ['fuente' => $f->fuente, 'proyecto' => $f->proyecto, 'partida' => $f->partida, 'base' => $f->base(),
                     'importe' => $f->importe(), 'descripcion' => "{$f->concepto} — {$factura}", 'articulo' => $f->concepto];
@@ -157,7 +160,7 @@ class GeneradorTramiteServicio
             }
             foreach ($f->porPartida() as $p) {
                 $renglones[] = ['fuente' => $p['fuente'], 'proyecto' => $p['proyecto'], 'partida' => $p['partida'], 'base' => $p['base'],
-                    'importe' => $p['importe'], 'descripcion' => "{$f->concepto} — {$factura}", 'articulo' => $f->concepto];
+                    'importe' => $p['importe'], 'descripcion' => "{$f->concepto}{$tipoGasto} — {$factura}", 'articulo' => $f->concepto];
             }
         }
 

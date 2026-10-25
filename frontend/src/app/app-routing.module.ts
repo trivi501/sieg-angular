@@ -185,6 +185,11 @@ const routes: Routes = [
       },
       // Mantenimiento vehicular (taller).
       {
+        path: 'vehiculos/mantenimientos/reporte',
+        data: { permission: ['vehiculos-mantenimiento', 'catalogos-vehiculos-index'] },
+        loadComponent: () => import('./pages/vehiculos/mantenimiento-reporte.component').then((c) => c.MantenimientoReporteComponent)
+      },
+      {
         path: 'vehiculos/mantenimientos',
         data: { permission: 'vehiculos-mantenimiento' },
         loadComponent: () => import('./pages/vehiculos/mantenimientos.component').then((c) => c.MantenimientosComponent)

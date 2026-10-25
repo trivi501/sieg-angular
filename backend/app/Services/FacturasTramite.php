@@ -149,7 +149,8 @@ class FacturasTramite
     }
 
     /**
-     * Revisiones comunes (CFDI de ingreso timbrado, a nombre del Ayuntamiento, no cargado antes) más las que trae
+     * Revisiones comunes (CFDI de ingreso timbrado, a nombre del Ayuntamiento con su régimen fiscal y un uso de
+     * CFDI aceptado, no cargado antes) más las que trae
      * quien llama, y luego el estado en el SAT. Lanza ValidationException con todo lo que falle.
      *
      * @return array{estado: string, efos: bool}
@@ -163,9 +164,7 @@ class FacturasTramite
             $errores[] = "El CFDI es de tipo {$cfdi['tipo']}; solo se aceptan facturas de ingreso (tipo I).";
         }
         $receptor = (string) config('services.sat.rfc_receptor');
-        if ($receptor && $cfdi['rfc_receptor'] && $cfdi['rfc_receptor'] !== $receptor) {
-            $errores[] = "La factura está a nombre de {$cfdi['rfc_receptor']}, no del Ayuntamiento ({$receptor}).";
-        }
+        $errores = [...$errores, ...Cfdi::erroresReceptor($cfdi)];
         if ($cfdi['uuid']) {
             $errores = [...$errores, ...$this->duplicidades($cfdi['uuid'])];
         }

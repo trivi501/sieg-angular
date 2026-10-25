@@ -296,6 +296,20 @@
     </div>
   }
 
+  <!-- Fondo: lo comprobado por tipo de gasto -->
+  @if (fondo && d.por_tipo_gasto.length) {
+    <div class="card">
+      <div class="card-body py-2 small d-flex flex-wrap gap-3 align-items-center">
+        <span class="text-muted">Por tipo de gasto:</span>
+        @for (g of d.por_tipo_gasto; track g.nombre) {
+          <span [class.text-warning]="!g.tipo">
+            <b>{{ g.nombre }}</b> {{ money(g.importe) }} <span class="text-muted">({{ g.facturas }})</span>
+          </span>
+        }
+      </div>
+    </div>
+  }
+
   <!-- Facturas -->
   <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
     <h5 class="mb-0">Facturas ({{ d.facturas.length }})</h5>
@@ -313,9 +327,10 @@
         subir todas las del mes juntas desde la carga del Excel: cada una va sola a su bitácora.
       } @else if (fondo) {
         Facturas de ingreso a nombre del Ayuntamiento, vigentes en el SAT, de cualquier proveedor (registrado o no) y de <b>hasta {{ money(t.limite_factura ?? 2000) }}</b>
-        cada una. Asigna la partida de <b>cada artículo</b>: si una factura tiene artículos de dos partidas, en la CLC sale un renglón por partida con solo su monto.
+        cada una. A cada factura asígnale su tipo de gasto (en viáticos, la comisión) y la partida de <b>cada artículo</b>: si una factura tiene artículos de dos
+        partidas, en la CLC sale un renglón por partida con solo su monto.
       } @else {
-        Facturas de ingreso a nombre del Ayuntamiento, vigentes en el SAT y todas del mismo proveedor. Cada factura es un renglón de la requisición y de la CLC
+        Facturas de ingreso a nombre del Ayuntamiento (con su régimen fiscal y un uso de CFDI aceptado), vigentes en el SAT y todas del mismo proveedor. Cada factura es un renglón de la requisición y de la CLC
         (aunque sean de la misma partida): asígnale partida, proyecto, fuente y concepto.
       }
     </p>
@@ -343,6 +358,15 @@
               <button type="button" class="btn btn-sm btn-outline-secondary" (click)="alternar(f.id)" [appAccion]="abiertas().has(f.id) ? 'Ocultar contenido' : 'Ver contenido de la factura'" icono="eye"></button>
             }
             <button type="button" class="btn btn-sm btn-outline-secondary" (click)="xml(f)" appAccion="Descargar XML" icono="download"></button>
+            @if (f.pdf) {
+              <button type="button" class="btn btn-sm btn-outline-secondary" (click)="pdf(f)" appAccion="Ver PDF" icono="file-pdf"></button>
+            }
+            @if (d.puede.editar) {
+              <label class="btn btn-sm mb-0" [class.btn-outline-primary]="!f.pdf" [class.btn-outline-secondary]="f.pdf" [title]="f.pdf ? 'Sustituir el PDF' : 'Subir el PDF de la factura'">
+                <input type="file" class="d-none" accept=".pdf,application/pdf" (change)="subirPdf(f, $event)" />
+                {{ f.pdf ? 'Cambiar PDF' : 'Subir PDF' }}
+              </label>
+            }
             @if (d.puede.editar) {
               <button type="button" class="btn btn-sm btn-outline-danger" (click)="quitar(f)" appAccion="Quitar factura" icono="delete"></button>
             }
@@ -416,7 +440,16 @@
           }
           @if (d.puede.editar) {
             <div class="row g-2 mt-1 align-items-end">
-              <div class="col-md-8">
+              <div class="col-md-3">
+                <label class="form-label small mb-0">Tipo de gasto</label>
+                <select class="form-select form-select-sm sin-busqueda" [(ngModel)]="clasif[f.id].tipo_gasto">
+                  <option value="">Tipo de gasto…</option>
+                  @for (g of tiposGasto(); track g[0]) {
+                    <option [value]="g[0]">{{ g[1] }}</option>
+                  }
+                </select>
+              </div>
+              <div class="col-md-5">
                 <label class="form-label small mb-0">Concepto de la factura</label>
                 <input class="form-control form-control-sm" maxlength="3000" [(ngModel)]="clasif[f.id].concepto" />
               </div>
@@ -428,9 +461,28 @@
               <div class="col-md-2">
                 <button type="button" class="btn btn-sm btn-primary w-100" (click)="guardarClasificacion(f)" appAccion="Guardar clasificación" icono="check"></button>
               </div>
+              @if (clasif[f.id].tipo_gasto === 'viaticos') {
+                <div class="col-12">
+                  <label class="form-label small mb-0">Comisión (viáticos): destino, fechas y motivo</label>
+                  <input
+                    class="form-control form-control-sm"
+                    maxlength="2000"
+                    placeholder="P. ej. Zacatecas – CDMX, 12 y 13 de octubre, entrega de documentación en la SHCP"
+                    [(ngModel)]="clasif[f.id].comision"
+                  />
+                </div>
+              }
               @if (erroresFactura()[f.id]) {
                 <div class="col-12 text-danger small">{{ erroresFactura()[f.id] }}</div>
               }
+            </div>
+          } @else {
+            <div class="small mt-1">
+              <span class="text-muted">Tipo de gasto</span> {{ f.tipo_gasto ? (d.tipos_gasto?.[f.tipo_gasto] ?? f.tipo_gasto) : '—' }}
+              @if (f.comision) {
+                · <span class="text-muted">Comisión</span> {{ f.comision }}
+              }
+              · <span class="text-muted">Concepto</span> {{ f.concepto ?? '—' }}
             </div>
           }
         } @else if (abiertas().has(f.id)) {

@@ -87,12 +87,22 @@
             @if (puede().descargarXml) {
               <button type="button" class="btn btn-sm btn-outline-secondary" (click)="descargarXml()" appAccion="Descargar XML" icono="download"></button>
             }
+            @if (x.pdf) {
+              <button type="button" class="btn btn-sm btn-outline-secondary" (click)="descargarPdfFactura()" appAccion="Ver PDF" icono="file-pdf"></button>
+            }
+            @if (puede().cargarPdf) {
+              <label class="btn btn-sm mb-0" [class.btn-outline-primary]="!x.pdf" [class.btn-outline-secondary]="x.pdf" [class.disabled]="ocupado()">
+                <input type="file" class="d-none" accept=".pdf,application/pdf" (change)="cargarPdfFactura($event)" />
+                {{ x.pdf ? 'Cambiar PDF' : 'Subir PDF' }}
+              </label>
+            }
           </div>
         </div>
       } @else if (puede().cargarXml) {
         <p class="small text-muted mb-2">
-          XML del CFDI (3.3 o 4.0). Se rechaza si el total no coincide con lo cotizado, si el emisor no es el proveedor de la orden, si no está
-          timbrado, si ya se cargó en otra orden o si no está vigente en el SAT.
+          XML del CFDI (3.3 o 4.0). Se rechaza si el total no coincide con lo cotizado, si el emisor no es el proveedor de la orden, si no está a nombre
+          del Ayuntamiento con su régimen fiscal y un uso de CFDI aceptado, si no está timbrado, si ya se cargó en otra orden o si no está vigente en el SAT.
+          Después se puede subir su PDF.
         </p>
         <div class="d-flex flex-wrap gap-2">
           <input #archivoXml type="file" class="form-control w-auto" accept=".xml,text/xml,application/xml" (change)="elegirXml($event)" />

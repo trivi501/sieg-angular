@@ -17,7 +17,7 @@ import { CombustibleService, TicketCombustible, litros } from '../combustible/co
 
 type Aviso = { tipo: 'success' | 'danger' | 'warning'; texto: string };
 /** Clasificación de una factura mientras se edita. */
-type Clasificacion = { partida: string; proyecto: string; fuente: string; concepto: string };
+type Clasificacion = { partida: string; proyecto: string; fuente: string; concepto: string; tipo_gasto?: string; comision?: string };
 /** Fondo revolvente: partida / proyecto / fuente de un artículo. */
 type LineaArticulo = { partida: string; proyecto: string; fuente: string };
 
@@ -99,7 +99,10 @@ export class ServicioDetalleComponent {
           d.facturas.map((f) => [f.id, f.conceptos.map((a) => ({ partida: a.partida ?? '', proyecto: a.proyecto ?? '', fuente: a.fuente ?? '' }))])
         );
         this.clasif = Object.fromEntries(
-          d.facturas.map((f) => [f.id, { partida: f.partida ?? '', proyecto: f.proyecto ?? '', fuente: f.fuente ?? '', concepto: f.concepto ?? '' }])
+          d.facturas.map((f) => [
+            f.id,
+            { partida: f.partida ?? '', proyecto: f.proyecto ?? '', fuente: f.fuente ?? '', concepto: f.concepto ?? '', tipo_gasto: f.tipo_gasto ?? '', comision: f.comision ?? '' }
+          ])
         );
         // Combustible: de inicio, la clasificación de la primera factura (o el concepto general).
         const primera = d.facturas[0];
@@ -147,6 +150,11 @@ export class ServicioDetalleComponent {
     if (s.has(id)) s.delete(id);
     else s.add(id);
     this.abiertas.set(s);
+  }
+
+  /** Fondo: tipos de gasto para elegir. */
+  tiposGasto(): [string, string][] {
+    return Object.entries(this.d()?.tipos_gasto ?? {});
   }
 
   /** Opciones encadenadas: partida → proyecto → fuente (de las líneas de la secretaría). */
@@ -211,7 +219,12 @@ export class ServicioDetalleComponent {
   guardarClasificacion(f: FacturaTramite): void {
     const c = this.clasif[f.id];
     const datos = this.fondo
-      ? { concepto: c.concepto || null, articulos: this.articulos[f.id].map((a) => ({ partida: a.partida || null, proyecto: a.proyecto || null, fuente: a.fuente || null })) }
+      ? {
+          concepto: c.concepto || null,
+          tipo_gasto: c.tipo_gasto || null,
+          comision: c.tipo_gasto === 'viaticos' ? c.comision || null : null,
+          articulos: this.articulos[f.id].map((a) => ({ partida: a.partida || null, proyecto: a.proyecto || null, fuente: a.fuente || null }))
+        }
       : { partida: c.partida || null, proyecto: c.proyecto || null, fuente: c.fuente || null, concepto: c.concepto || null };
     this.servicio.clasificar(this.tipo, this.id, f.id, datos).subscribe({
       next: () => {
@@ -239,6 +252,29 @@ export class ServicioDetalleComponent {
 
   xml(f: FacturaTramite): void {
     this.servicio.descargarXml(this.tipo, this.id, f.id).subscribe((b) => abrirBlob(b, `${f.uuid}.xml`, true));
+  }
+
+  pdf(f: FacturaTramite): void {
+    this.servicio.descargarPdf(this.tipo, this.id, f.id).subscribe((b) => abrirBlob(b, `${f.uuid}.pdf`));
+  }
+
+  /** PDF (representación impresa) de la factura; sustituye al que tuviera. */
+  subirPdf(f: FacturaTramite, evento: Event): void {
+    const input = evento.target as HTMLInputElement;
+    const archivo = input.files?.[0];
+    if (!archivo) return;
+    this.servicio.subirPdf(this.tipo, this.id, f.id, archivo).subscribe({
+      next: (r) => {
+        input.value = '';
+        this.aviso.set({ tipo: 'success', texto: `${f.serie_folio ?? f.uuid}: ${r.message}` });
+        this.cargar();
+      },
+      error: (e: HttpErrorResponse) => {
+        input.value = '';
+        const { campos, mensaje } = erroresDe(e);
+        this.aviso.set({ tipo: 'danger', texto: campos['pdf'] ?? mensaje });
+      }
+    });
   }
 
   guardarConcepto(): void {
