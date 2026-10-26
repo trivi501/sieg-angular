@@ -30,6 +30,23 @@ class PresupuestoService
         return implode('|', array_map(fn ($v) => trim((string) $v), [$unidad, $fuente, $proyecto, $partida]));
     }
 
+    /** Partida del capítulo 1000 (servicios personales: sueldos, prestaciones, seguridad social). */
+    public static function esCapitulo1000(?string $partida): bool
+    {
+        return str_starts_with(trim((string) $partida), '1');
+    }
+
+    /**
+     * Las unidades administrativas no tocan el capítulo 1000 (lo ejerce Recursos Humanos con la nómina): solo
+     * Admin y quien tiene presupuesto-capitulo-1000 (Recursos Humanos, Control Presupuestal).
+     */
+    public static function restringeCapitulo1000($user): bool
+    {
+        return ! $user->hasRole(['Super Admin', 'Admin']) && ! $user->can('presupuesto-capitulo-1000');
+    }
+
+    public const MENSAJE_CAPITULO_1000 = 'Las partidas del capítulo 1000 (servicios personales) solo las ejerce Recursos Humanos con la nómina.';
+
     /**
      * Claves de unidad administrativa (CLAVE del presupuesto) que el usuario puede ver;
      * null = todas (Admin o quien autoriza modificaciones presupuestales).

@@ -52,6 +52,10 @@ class SyncPermissions extends Command
             'padron-index', 'padron-gestionar',
             // Contabilidad: reporte mensual del ISR retenido.
             'contabilidad-isr',
+            // Nómina: Recursos Humanos importa la nómina de Nomipac y captura finiquitos y laudos; Control Presupuestal
+            // valida y se genera una CLC por unidad administrativa.
+            'nomina-index', 'nomina-create', 'nomina-validar',
+            'presupuesto-capitulo-1000', // usar partidas del capítulo 1000 (las áreas no pueden)
 
             // Tesorería: mesa de control de pagos (Egresos), pago a proveedores, conciliación y reportes.
             'tesoreria-index', 'tesoreria-pagar', 'tesoreria-conciliar',

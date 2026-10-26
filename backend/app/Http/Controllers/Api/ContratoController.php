@@ -87,6 +87,7 @@ class ContratoController extends Controller
             'tipos' => Contrato::TIPOS,
             'unidad' => $unidad,
             'lineas' => $clave ? app(PresupuestoService::class)->lineas([trim($clave)])
+                ->when(PresupuestoService::restringeCapitulo1000($user), fn ($ls) => $ls->reject(fn ($l) => PresupuestoService::esCapitulo1000($l['partida'])))
                 ->map(fn ($l) => collect($l)->only(['fuente', 'nombre_fuente', 'proyecto', 'nombre_proyecto', 'partida', 'nombre_partida', 'disponible']))->values() : [],
         ]);
     }
@@ -366,6 +367,9 @@ class ContratoController extends Controller
         $clave = trim((string) EgresoUnidadAdministrativa::whereKey($validated['id_cat_egreso_unidad_administrativa'])->value('clave'));
         if (! app(PresupuestoService::class)->linea(PresupuestoService::clave($clave, $validated['fuente'], $validated['proyecto'], $validated['partida']))) {
             throw ValidationException::withMessages(['partida' => 'Esa combinación de partida, proyecto y fuente no existe en el presupuesto de la secretaría.']);
+        }
+        if (PresupuestoService::esCapitulo1000($validated['partida']) && PresupuestoService::restringeCapitulo1000($request->user())) {
+            throw ValidationException::withMessages(['partida' => PresupuestoService::MENSAJE_CAPITULO_1000]);
         }
         $meses = (new Contrato(['fecha_inicio' => $validated['fecha_inicio'], 'fecha_fin' => $validated['fecha_fin']]))->meses()->count();
         $total = round((float) ($validated['monto_total'] ?? 0) ?: $meses * (float) $validated['monto_mensual'], 2);

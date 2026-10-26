@@ -185,6 +185,7 @@ class TramiteServicioController extends Controller
                     'importe' => round($g->sum(fn ($f) => $f->importe()), 2)])->sortByDesc('importe')->values() : [],
             // Líneas de presupuesto de la secretaría para clasificar (solo mientras se captura).
             'lineas' => $editable ? app(PresupuestoService::class)->lineas([$clave])
+                ->when(PresupuestoService::restringeCapitulo1000($user), fn ($ls) => $ls->reject(fn ($l) => PresupuestoService::esCapitulo1000($l['partida'])))
                 ->map(fn ($l) => collect($l)->only(['fuente', 'nombre_fuente', 'proyecto', 'nombre_proyecto', 'partida', 'nombre_partida', 'disponible']))
                 ->values() : [],
             'puede' => [
@@ -262,6 +263,7 @@ class TramiteServicioController extends Controller
         $unidad = $tramite->unidadAdministrativa?->clave;
         $existe = fn (?string $fuente, ?string $proyecto, ?string $partida) => app(PresupuestoService::class)
             ->linea(PresupuestoService::clave($unidad, $fuente ?? '', $proyecto ?? '', $partida ?? '')) !== null;
+        $capitulo1000 = fn (?string $partida) => PresupuestoService::esCapitulo1000($partida) && PresupuestoService::restringeCapitulo1000($request->user());
 
         if ($tramite->esFondo()) {
             $validated = $request->validate([
@@ -286,6 +288,9 @@ class TramiteServicioController extends Controller
                 if ((filled($a['partida'] ?? null) || filled($a['proyecto'] ?? null) || filled($a['fuente'] ?? null)) && ! $existe($a['fuente'] ?? null, $a['proyecto'] ?? null, $a['partida'] ?? null)) {
                     throw ValidationException::withMessages(["articulos.{$i}.partida" => 'Artículo '.($i + 1).': esa combinación de partida, proyecto y fuente no existe en el presupuesto de la secretaría.']);
                 }
+                if ($capitulo1000($a['partida'] ?? null)) {
+                    throw ValidationException::withMessages(["articulos.{$i}.partida" => 'Artículo '.($i + 1).': '.PresupuestoService::MENSAJE_CAPITULO_1000]);
+                }
                 $articulos[$i] = [...$articulos[$i], 'partida' => $a['partida'] ?? null, 'proyecto' => $a['proyecto'] ?? null, 'fuente' => $a['fuente'] ?? null];
             }
             $factura->update(['conceptos' => $articulos, 'concepto' => mb_strtoupper(trim($validated['concepto'])), 'tipo_gasto' => $validated['tipo_gasto'],
@@ -302,6 +307,9 @@ class TramiteServicioController extends Controller
         ], ['concepto.required' => 'Captura el concepto de la factura.']);
         if ((filled($validated['partida']) || filled($validated['proyecto']) || filled($validated['fuente'])) && ! $existe($validated['fuente'], $validated['proyecto'], $validated['partida'])) {
             throw ValidationException::withMessages(['partida' => 'Esa combinación de partida, proyecto y fuente no existe en el presupuesto de la secretaría.']);
+        }
+        if ($capitulo1000($validated['partida'])) {
+            throw ValidationException::withMessages(['partida' => PresupuestoService::MENSAJE_CAPITULO_1000]);
         }
         $factura->update([...$validated, 'concepto' => mb_strtoupper(trim($validated['concepto']))]);
 

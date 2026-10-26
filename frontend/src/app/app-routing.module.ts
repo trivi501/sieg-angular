@@ -124,6 +124,18 @@ const routes: Routes = [
         data: { permission: 'contratos-index' },
         loadComponent: () => import('./pages/contratos/contrato-detalle.component').then((c) => c.ContratoDetalleComponent)
       },
+      // Nómina: Recursos Humanos importa la nómina de Nomipac o captura finiquitos y laudos; Control Presupuestal
+      // la valida y se genera una CLC por unidad administrativa.
+      {
+        path: 'nomina',
+        data: { permission: 'nomina-index' },
+        loadComponent: () => import('./pages/nomina/nominas-lista.component').then((c) => c.NominasListaComponent)
+      },
+      {
+        path: 'nomina/:id',
+        data: { permission: 'nomina-index' },
+        loadComponent: () => import('./pages/nomina/nomina-detalle.component').then((c) => c.NominaDetalleComponent)
+      },
       // Padrón de proveedores del Órgano Interno de Control: expediente, cédula y alertas.
       {
         path: 'padron',

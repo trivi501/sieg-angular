@@ -107,7 +107,8 @@ class ModificacionPresupuestalController extends Controller
             $faltanteSugerido = $faltante['faltante'] ?? null;
         }
 
-        $lineas = $this->presupuesto->lineas($claves);
+        $lineas = $this->presupuesto->lineas($claves)
+            ->when(PresupuestoService::restringeCapitulo1000($request->user()), fn ($ls) => $ls->reject(fn ($l) => PresupuestoService::esCapitulo1000($l['partida']))->values());
         $mesActual = $this->mesActual();
 
         return response()->json([
@@ -365,6 +366,9 @@ class ModificacionPresupuestalController extends Controller
 
         if (! $linea || ($clavesUnidad !== null && ! in_array($unidad, $clavesUnidad, true))) {
             throw ValidationException::withMessages([$campo => 'Esa línea de presupuesto no existe o no pertenece a tu secretaría.']);
+        }
+        if (PresupuestoService::esCapitulo1000($linea['partida']) && PresupuestoService::restringeCapitulo1000(auth()->user())) {
+            throw ValidationException::withMessages([$campo => PresupuestoService::MENSAJE_CAPITULO_1000]);
         }
 
         return $linea;

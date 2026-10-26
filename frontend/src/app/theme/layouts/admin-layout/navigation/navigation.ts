@@ -168,6 +168,15 @@ export const NavigationItems: NavigationItem[] = [
         permission: 'proveedores-index'
       },
       {
+        id: 'nomina',
+        title: 'Nómina (Recursos Humanos)',
+        type: 'item',
+        classes: 'nav-item',
+        url: '/nomina',
+        icon: 'team',
+        permission: 'nomina-index'
+      },
+      {
         id: 'contabilidad-isr',
         title: 'ISR retenido (Contabilidad)',
         type: 'item',

@@ -470,6 +470,7 @@ class RequisicionController extends Controller
         return app(PresupuestoService::class)
             ->lineas($unidades->pluck('clave')->map(fn ($c) => trim((string) $c))->all())
             ->when($soloPartidas !== null, fn ($lineas) => $lineas->filter(fn ($l) => in_array((string) $l['partida'], $soloPartidas, true)))
+            ->when(PresupuestoService::restringeCapitulo1000(auth()->user()), fn ($lineas) => $lineas->reject(fn ($l) => PresupuestoService::esCapitulo1000($l['partida'])))
             ->map(fn ($l) => collect($l)->only([
                 'clave', 'unidad_clave', 'fuente', 'nombre_fuente', 'proyecto', 'nombre_proyecto', 'partida', 'nombre_partida', 'disponible',
             ]))
@@ -665,6 +666,8 @@ class RequisicionController extends Controller
             $clave = PresupuestoService::clave($unidad?->clave, $fila['fuente'] ?? null, $fila['proyecto'] ?? null, $fila['partida'] ?? null);
             if (! isset($existentes[$clave])) {
                 $errores["filas.{$i}.partida"] = 'Selecciona una fuente / proyecto / partida del presupuesto de la unidad (concepto '.($i + 1).').';
+            } elseif (PresupuestoService::esCapitulo1000($fila['partida'] ?? null) && PresupuestoService::restringeCapitulo1000(auth()->user())) {
+                $errores["filas.{$i}.partida"] = PresupuestoService::MENSAJE_CAPITULO_1000.' (concepto '.($i + 1).').';
             }
         }
 

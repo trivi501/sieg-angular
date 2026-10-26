@@ -40,6 +40,10 @@ class RolesSistemaSeeder extends Seeder
         ],
         // Reporte mensual del ISR retenido.
         'Contabilidad' => ['contabilidad-isr'],
+        // Importa la nómina de Nomipac y captura finiquitos y laudos (capítulo 1000).
+        'Recursos Humanos' => ['nomina-index', 'nomina-create', 'presupuesto-capitulo-1000'],
+        // Valida la nómina, los finiquitos y laudos; al validar se generan las CLC.
+        'Control Presupuestal' => ['nomina-index', 'nomina-validar', 'presupuesto-capitulo-1000'],
     ];
 
     public function run(): void

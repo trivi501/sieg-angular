@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\ClcController;
 use App\Http\Controllers\Api\CombustibleController;
 use App\Http\Controllers\Api\ContabilidadController;
 use App\Http\Controllers\Api\ContratoController;
+use App\Http\Controllers\Api\NominaController;
 use App\Http\Controllers\Api\FacturaController;
 use App\Http\Controllers\Api\ModificacionPresupuestalController;
 use App\Http\Controllers\Api\OrdenCompraController;
@@ -206,6 +207,27 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::post('{contrato}/rechazar', [ContratoController::class, 'rechazar'])->middleware('permission:contratos-autorizar');
             Route::post('{contrato}/cancelar', [ContratoController::class, 'cancelar'])->middleware('permission:contratos-create|contratos-autorizar');
             Route::post('{contrato}/mensualidades', [ContratoController::class, 'facturar'])->middleware('permission:contratos-create');
+        });
+    });
+
+    // Nómina: Recursos Humanos importa la nómina de Nomipac (o captura un finiquito o laudo); Control Presupuestal
+    // la valida y se genera una CLC por unidad administrativa.
+    Route::prefix('nominas')->group(function () {
+        Route::get('', [NominaController::class, 'index'])->middleware('permission:nomina-index');
+        Route::get('opciones', [NominaController::class, 'opciones'])->middleware('permission:nomina-index');
+        Route::get('plantilla', [NominaController::class, 'plantilla'])->middleware('permission:nomina-create');
+        Route::post('', [NominaController::class, 'store'])->middleware('permission:nomina-create');
+        Route::whereNumber(['nomina', 'renglon'])->group(function () {
+            Route::get('{nomina}', [NominaController::class, 'show'])->middleware('permission:nomina-index');
+            Route::put('{nomina}', [NominaController::class, 'update'])->middleware('permission:nomina-create');
+            Route::get('{nomina}/archivo', [NominaController::class, 'archivo'])->middleware('permission:nomina-index');
+            Route::post('{nomina}/importar', [NominaController::class, 'importar'])->middleware('permission:nomina-create');
+            Route::post('{nomina}/renglones', [NominaController::class, 'agregarRenglon'])->middleware('permission:nomina-create');
+            Route::delete('{nomina}/renglones/{renglon}', [NominaController::class, 'quitarRenglon'])->middleware('permission:nomina-create');
+            Route::post('{nomina}/enviar', [NominaController::class, 'enviar'])->middleware('permission:nomina-create');
+            Route::post('{nomina}/validar', [NominaController::class, 'validarNomina'])->middleware('permission:nomina-validar');
+            Route::post('{nomina}/rechazar', [NominaController::class, 'rechazar'])->middleware('permission:nomina-validar');
+            Route::post('{nomina}/cancelar', [NominaController::class, 'cancelar'])->middleware('permission:nomina-create|nomina-validar');
         });
     });
 
