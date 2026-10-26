@@ -1,2 +1,5 @@
 # Configuración local de Claude Code
 .claude/settings.local.json
+
+# Documentación (manuales, expediente de entregables y sus generadores): solo local
+docs/
