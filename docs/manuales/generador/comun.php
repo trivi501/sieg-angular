@@ -46,6 +46,7 @@ const ANDRES = 'andres.robles@sieg.demo';    // Órgano Interno de Control
 const JAVIER = 'javier.nunez@sieg.demo';     // Taller (mantenimiento vehicular)
 const PATRICIA = 'patricia.lugo@sieg.demo';  // Contabilidad
 const ANA = 'ana.torres@sieg.demo';          // Área solicitante con permisos mínimos (para la captura del menú reducido)
+const GABRIELA = 'gabriela.ruiz@sieg.demo';  // Recursos Humanos (nómina, finiquitos y laudos)
 
 $errores = 0;
 

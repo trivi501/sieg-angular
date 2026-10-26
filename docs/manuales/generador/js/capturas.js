@@ -68,7 +68,21 @@ const CAPTURAS = [
   ['52-menu-solicitante', '/inicio', { usuario: 'ana.torres@sieg.demo' }],
   ['53-fondo-validado', `/fondos/${ids.fondo}`, { completa: true }],
   ['54-bitacora-validada', `/combustible/${ids.bitacora_validada}`, { completa: true }],
+  ['55-nominas', '/nomina'],
+  ['56-nomina-nueva', '/nomina', { accion: nuevaNomina, usuario: 'gabriela.ruiz@sieg.demo' }],
+  ['57-nomina-por-validar', `/nomina/${ids.nomina_por_validar}`, { completa: true }],
+  ['58-nomina-validada', `/nomina/${ids.nomina}`, { completa: true }],
+  ['59-finiquito', `/nomina/${ids.finiquito}`, { completa: true }],
+  ['60-laudo-captura', `/nomina/${ids.laudo}`, { completa: true, usuario: 'gabriela.ruiz@sieg.demo' }],
 ];
+
+/** Abre el formulario de un trámite nuevo de nómina. */
+async function nuevaNomina(page) {
+  const [boton] = await page.$$('xpath/.//button[contains(., "Nuevo trámite")]');
+  if (!boton) return;
+  await boton.click();
+  await espera(700);
+}
 
 async function menuContextual(page) {
   const fila = await page.$('table tbody tr');
@@ -82,21 +96,31 @@ async function entrar(page, correo) {
   await page.goto(`${BASE}/login`, { waitUntil: 'networkidle0' });
   await page.evaluate(() => localStorage.clear());
   await page.goto(`${BASE}/login`, { waitUntil: 'networkidle0' });
+  await page.waitForSelector('input[type=email]');
   await page.type('input[type=email]', correo);
   await page.type('input[type=password]', CLAVE);
-  await Promise.all([page.waitForNavigation({ waitUntil: 'networkidle0' }).catch(() => {}), page.keyboard.press('Enter')]);
+  await page.keyboard.press('Enter');
+  // La SPA no navega al entrar: se espera a que guarde el token (si no entra, falla aquí y no saca capturas del login).
+  await page.waitForFunction(() => !!localStorage.getItem('sieg_token'), { timeout: 60000 });
+  await page.waitForNetworkIdle({ idleTime: 500, timeout: 60000 }).catch(() => {});
   await espera(800);
 }
 
 (async () => {
   const solo = process.argv.slice(2);
   const navegador = await puppeteer.launch({
-    executablePath: process.env.CHROME ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    executablePath:
+      process.env.CHROME ??
+      (process.platform === 'win32'
+        ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
+        : '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'),
     headless: true,
     args: ['--lang=es-MX', '--hide-scrollbars'],
     defaultViewport: { width: 1440, height: 900, deviceScaleFactor: 1.5 }
   });
   const page = await navegador.newPage();
+  // En Windows la API atiende una petición a la vez (js/proxy.js): las páginas con muchas consultas tardan más.
+  page.setDefaultNavigationTimeout(90000);
   page.on('pageerror', (e) => console.log('  error de página:', e.message));
   let usuario = null;
   for (const [nombre, ruta, op = {}] of CAPTURAS) {

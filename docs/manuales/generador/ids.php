@@ -37,5 +37,9 @@ echo json_encode([
     'proveedor_vencido' => Proveedor::where('rfc', 'FMV0607215H9')->value('id'),
     'modificacion' => App\Models\ModificacionPresupuestal::orderBy('id')->value('id'),
     'ticket' => App\Models\SupportTicket::orderBy('id')->value('id'),
+    'nomina' => App\Models\Nomina::where('tipo', 'nomina')->where('estado', 'validado')->value('id'),
+    'nomina_por_validar' => App\Models\Nomina::where('tipo', 'nomina')->where('estado', 'por_validar')->value('id'),
+    'finiquito' => App\Models\Nomina::where('tipo', 'finiquito')->value('id'),
+    'laudo' => App\Models\Nomina::where('tipo', 'laudo')->value('id'),
     'presupuesto' => App\Models\PresupuestoEgreso::query()->value((new App\Models\PresupuestoEgreso)->getKeyName()),
 ], JSON_PRETTY_PRINT);

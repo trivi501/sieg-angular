@@ -10,3 +10,5 @@ servidor.log
 *.xlsx
 js/node_modules/
 js/package-lock.json
+todo.log
+capturas.log

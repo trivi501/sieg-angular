@@ -19,9 +19,17 @@ use Spatie\Permission\Models\Role;
 
 echo "Limpieza (datos reales fuera de la copia)\n";
 DB::statement('SET FOREIGN_KEY_CHECKS=0');
-foreach (['combustible_cargas', 'combustible_facturas', 'combustible_lotes', 'tramite_servicio_facturas', 'tramites_servicio', 'auditoria', 'notifications',
-    'sessions', 'personal_access_tokens', 'support_tickets', 'ticket_comments', 'cache'] as $t) {
-    DB::table($t)->truncate();
+foreach (['combustible_cargas', 'combustible_facturas', 'combustible_lotes', 'tramite_servicio_facturas', 'tramites_servicio', 'nomina_renglones', 'nominas', 'auditoria', 'notifications',
+    'sessions', 'personal_access_tokens', 'support_tickets', 'ticket_comments', 'cache',
+    // La operación del sistema (requisiciones, órdenes, CLC, pagos, padrón…) también sale de la copia: la demostración
+    // la vuelve a crear desde REQ-0001 (en una base de desarrollo, el origen sí puede traer registros de prueba).
+    'almacen_entrada_detalles', 'almacen_entradas', 'almacen_salida_detalles', 'almacen_salidas', 'clc_movimientos', 'clc_relacion_orden', 'clc_relaciones',
+    'contrato_mensualidades', 'contratos', 'modificaciones_presupuestales', 'ordenes_compra_refacturas', 'ordenes_compra', 'proveedor_cedulas',
+    'proveedor_cuentas', 'proveedor_documentos', 'proveedores', 'tb_egreso_requisicion_bitacora', 'tb_egreso_requisicion_detalle', 'tb_egreso_requisicion',
+    'tesoreria_movimientos', 'tesoreria_pago_clc', 'tesoreria_pagos', 'vehiculo_mantenimientos'] as $t) {
+    if (Illuminate\Support\Facades\Schema::hasTable($t)) {
+        DB::table($t)->truncate();
+    }
 }
 DB::statement('SET FOREIGN_KEY_CHECKS=1');
 
@@ -38,6 +46,7 @@ $elenco = [
     JAVIER => ['JAVIER NÚÑEZ OLVERA', 'Taller mecánico', null],
     PATRICIA => ['PATRICIA LUGO SERNA', 'Contabilidad', null],
     ANA => ['ANA TORRES VILLA', 'Área solicitante', '210'],
+    GABRIELA => ['GABRIELA RUIZ MONTOYA', 'Recursos Humanos', null],
 ];
 // Los usuarios de la copia (personas reales) se sustituyen: los 5 de prueba pasan a ser parte del elenco y los demás se borran.
 $prueba = ['admin.prueba@sieg.test' => LAURA, 'solicitante.prueba@sieg.test' => CARLOS, 'materiales.prueba@sieg.test' => MONICA,
@@ -72,15 +81,17 @@ foreach ([9 => ['2026-08-29', '2026-09-07'], 10 => ['2026-09-28', '2026-10-07'],
 }
 
 echo "Bancos y cuentas del Ayuntamiento\n";
-$banorte = Banco::updateOrCreate(['id_cat_banco' => 1], ['clave' => '072', 'descripcion' => 'BANORTE', 'activo' => true]);
-$bbva = Banco::updateOrCreate(['id_cat_banco' => 2], ['clave' => '012', 'descripcion' => 'BBVA MÉXICO', 'activo' => true]);
-$santander = Banco::updateOrCreate(['id_cat_banco' => 3], ['clave' => '014', 'descripcion' => 'SANTANDER', 'activo' => true]);
+// Por su clave: el catálogo de la copia puede traer ya los bancos con otros ids.
+$bancos = [];
+foreach ([1 => ['072', 'BANORTE'], 2 => ['012', 'BBVA MÉXICO'], 3 => ['014', 'SANTANDER']] as $n => [$clave, $nombre]) {
+    $bancos[$n] = Banco::updateOrCreate(['clave' => $clave], ['descripcion' => $nombre, 'activo' => true])->id_cat_banco;
+}
 TesoreriaCuenta::query()->delete();
-TesoreriaCuenta::create(['nombre' => 'CONCENTRADORA RECURSOS PROPIOS', 'id_cat_banco' => 1, 'numero' => '0845123370', 'clabe' => '072930008451233704', 'fuente' => '111',
+TesoreriaCuenta::create(['nombre' => 'CONCENTRADORA RECURSOS PROPIOS', 'id_cat_banco' => $bancos[1], 'numero' => '0845123370', 'clabe' => '072930008451233704', 'fuente' => '111',
     'saldo_inicial' => 18500000, 'fecha_saldo_inicial' => '2026-01-01', 'activo' => true]);
-TesoreriaCuenta::create(['nombre' => 'PARTICIPACIONES FEDERALES', 'id_cat_banco' => 2, 'numero' => '0198842211', 'clabe' => '012930001988422115', 'fuente' => '561',
+TesoreriaCuenta::create(['nombre' => 'PARTICIPACIONES FEDERALES', 'id_cat_banco' => $bancos[2], 'numero' => '0198842211', 'clabe' => '012930001988422115', 'fuente' => '561',
     'saldo_inicial' => 42750000, 'fecha_saldo_inicial' => '2026-01-01', 'activo' => true]);
-TesoreriaCuenta::create(['nombre' => 'FORTAMUN', 'id_cat_banco' => 3, 'numero' => '6550912384', 'clabe' => '014930655091238411', 'fuente' => '512',
+TesoreriaCuenta::create(['nombre' => 'FORTAMUN', 'id_cat_banco' => $bancos[3], 'numero' => '6550912384', 'clabe' => '014930655091238411', 'fuente' => '512',
     'saldo_inicial' => 26300000, 'fecha_saldo_inicial' => '2026-01-01', 'activo' => true]);
 
 echo "Proveedores (padrón del OIC)\n";
@@ -104,7 +115,7 @@ foreach ($proveedores as [$nombre, $rfc, $giro, $rep, $clabe, $banco, $estado]) 
     if (! $p) {
         continue;
     }
-    $p->update(['id_cat_banco' => $banco]);
+    $p->update(['id_cat_banco' => $bancos[$banco]]);
     if ($estado === 'en_revision') {
         dia('2026-10-18 10:00');
         api(ANDRES, 'POST', "padron/{$p->id}/documentos", ['tipo' => 'constancia_fiscal', 'fecha_documento' => '2026-02-01'], ['archivo' => pdfFalso("csf_{$rfc}.pdf", "Constancia de situacion fiscal {$rfc}")]);

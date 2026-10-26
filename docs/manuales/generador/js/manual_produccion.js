@@ -4,7 +4,7 @@ const { h1, h2, h3, p, l, n, nota, tabla, codigo } = B;
 
 reiniciar();
 const contenido = [
-  portada('Manual de producción', 'Instalación, configuración, despliegue, respaldos y operación del servidor', 'Versión 1.0 · Octubre de 2026'),
+  portada('Manual de producción', 'Instalación, configuración, despliegue, respaldos y operación del servidor', 'Versión 1.1 · Octubre de 2026'),
 
   // ------------------------------------------------------------------ 1
   h1('1. Arquitectura'),
@@ -13,7 +13,7 @@ const contenido = [
     ['Frontend', 'Angular 22 (SPA, componentes standalone)', '`frontend/`', 'La interfaz. Se compila a archivos estáticos (HTML, JS, CSS) que sirve el servidor web.'],
     ['Backend (API)', 'Laravel 13 sobre PHP 8.3 o superior', '`backend/`', 'API REST en `/api`: reglas del trámite, permisos, PDF, Excel y verificación de CFDI en el SAT.'],
     ['Base de datos', 'MySQL 8.0', '—', 'Esquema heredado de SIEG más las tablas nuevas (migraciones de Laravel).'],
-    ['Archivos', 'Disco local del servidor', '`backend/storage/app`', 'XML y PDF de facturas, expedientes del padrón, Excel del combustible e imágenes de tickets.']
+    ['Archivos', 'Disco local del servidor', '`backend/storage/app`', 'XML y PDF de facturas, expedientes del padrón, Excel del combustible y de la nómina, e imágenes de tickets.']
   ], [1500, 2500, 1700, 3660]),
   p('Librerías principales del backend: **laravel/sanctum** (sesión por token), **spatie/laravel-permission** (roles y permisos), **barryvdh/laravel-dompdf** (PDF) y **phpoffice/phpspreadsheet** (Excel).'),
   h2('1.1 Cómo se conectan'),
@@ -84,8 +84,9 @@ const contenido = [
   l([
     '`migrate --force` crea las tablas y columnas que falten (no borra datos).',
     '`permissions:sync` registra todos los permisos de los módulos y se los da a los roles **Super Admin** y **Admin**.',
-    '`RolesSistemaSeeder` crea los roles de los módulos nuevos (Área solicitante, Recursos Materiales, Control de combustible, Órgano Interno de Control, Tesorería, Contabilidad) y solo **agrega** permisos: no quita lo que cada rol ya tenga ni crea usuarios. Se puede correr las veces que sea.'
+    '`RolesSistemaSeeder` crea los roles de los módulos nuevos (Área solicitante, Recursos Materiales, Control de combustible, Órgano Interno de Control, Tesorería, Contabilidad, Recursos Humanos y Control Presupuestal) y solo **agrega** permisos: no quita lo que cada rol ya tenga ni crea usuarios. Se puede correr las veces que sea.'
   ]),
+  nota('La migración `crear_nominas` (módulo de nómina) agrega las tablas `nominas` y `nomina_renglones`, la columna `ordenes_compra.nomina_id`, los permisos `nomina-index`, `nomina-create`, `nomina-validar` y `presupuesto-capitulo-1000`, y el rol **Recursos Humanos**. No borra datos. Después de aplicarla, asigna el rol Recursos Humanos a su personal en **Administración → Usuarios**.'),
   nota('No corras `UsuariosPruebaSeeder` en producción: crea usuarios de prueba (está bloqueado cuando APP_ENV=production).', 'Importante'),
   h2('3.5 Primer usuario administrador'),
   p('Si la base es nueva y no hay ningún administrador, créalo desde la terminal del servidor:'),
@@ -94,7 +95,7 @@ const contenido = [
   h2('3.6 Carpetas y permisos de archivos'),
   ...codigo('cd /var/www/sieg/backend\nphp artisan storage:link\nsudo chown -R deploy:www-data storage bootstrap/cache\nsudo chmod -R ug+rwX storage bootstrap/cache'),
   l([
-    '`storage/app/private`: XML y PDF de facturas (órdenes de compra y trámites), expedientes del padrón y Excel del combustible. **No** debe quedar accesible desde la web.',
+    '`storage/app/private`: XML y PDF de facturas (órdenes de compra y trámites), expedientes del padrón, Excel del combustible y Excel de la nómina importada (`nominas/`). **No** debe quedar accesible desde la web.',
     '`storage/app/public` (enlazada en `public/storage` con `storage:link`): imágenes adjuntas a los tickets de soporte.',
     '`storage/logs`: logs de Laravel.'
   ]),
@@ -142,7 +143,9 @@ const contenido = [
   l([
     'El resultado queda en `frontend/dist/` (los archivos que se publican).',
     'Si el sistema se publica en una subcarpeta (por ejemplo `https://servidor/sieg/`), usa `--base-href /sieg/` y ajusta Nginx.',
-    'El script `npm run build-prod` del package.json trae un base-href de la plantilla original (`/angular/free/`): **no lo uses**; usa el comando de arriba o el script de despliegue.'
+    'El script `npm run build-prod` del package.json trae un base-href de la plantilla original (`/angular/free/`): **no lo uses**; usa el comando de arriba o el script de despliegue.',
+    '`frontend/.npmrc` trae `legacy-peer-deps=true`: los paquetes de revisión de código (`@angular-eslint`, de Angular 21) conviven con el CLI de Angular 22. Sin ese archivo, `npm ci` falla con **ERESOLVE**.',
+    'Si `git pull` se niega porque cambiaron `package.json` o `package-lock.json` en el servidor, regrésalos con `git checkout -- frontend/package.json frontend/package-lock.json` antes de actualizar.'
   ]),
   ...codigo('rsync -az frontend/dist/ deploy@servidor:/var/www/sieg-web/'),
 
@@ -203,13 +206,20 @@ const contenido = [
     ['Cuentas bancarias del Ayuntamiento (banco, CLABE, fuente, saldo inicial)', 'Tesorería → Cuentas bancarias', 'Tesorería'],
     ['Proveedores con su expediente y cédula', 'Padrón de proveedores (OIC)', 'Órgano Interno de Control'],
     ['Padrón vehicular (secretaría de resguardo y área)', 'Catálogos → Vehículos', 'Taller / Administración'],
-    ['Usuarios con su rol y su secretaría', 'Administración → Usuarios', 'Administración']
+    ['Usuarios con su rol y su secretaría', 'Administración → Usuarios', 'Administración'],
+    ['Personal de Recursos Humanos con el rol Recursos Humanos (nómina); Control Presupuestal con el permiso para validarla', 'Administración → Usuarios / Roles', 'Administración']
   ], [3800, 3460, 2100]),
   h2('6.2 Facturas (CFDI) y SAT'),
   l([
     'Cada factura se verifica en el SAT al cargarla; solo se guarda si está **vigente**. Si el SAT no responde, la factura no se guarda y se pide intentar más tarde.',
     'Se exige que el receptor sea el Municipio (`SAT_RFC_RECEPTOR`), con el régimen `SAT_REGIMEN_RECEPTOR` y un uso de CFDI de `SAT_USOS_CFDI`. Después de cambiar el .env, corre `php artisan config:cache`.',
     'Si el emisor aparece en la lista de EFOS del SAT, la factura se acepta con advertencia.'
+  ]),
+  h2('6.3 Nómina y capítulo 1000'),
+  l([
+    'El cálculo y el timbrado de la nómina siguen en Nomipac. Recursos Humanos acomoda lo que genera Nomipac en la plantilla de SIEG (**Unidad**, **Fuente**, **Proyecto**, **Partida**, **Concepto**, **Importe**; se descarga desde la pantalla de Nómina) y la importa. La unidad es la clave presupuestal (CLAVE del presupuesto); los ceros a la izquierda que pierda Excel se corrigen solos.',
+    'Al validar Control Presupuestal se generan, por cada unidad, la requisición, un registro sin factura con folio `PN-AÑO-0001` y la CLC, que entra al trámite en Control Presupuestal. No necesita configuración adicional.',
+    'Las partidas del capítulo 1000 (las que empiezan con 1) solo las usan quienes tienen el permiso `presupuesto-capitulo-1000` (Admin, Recursos Humanos y Control Presupuestal). Las áreas no las ven en requisiciones, trámites, contratos ni modificaciones presupuestales.'
   ]),
 
   // ------------------------------------------------------------------ 7
@@ -300,14 +310,15 @@ const contenido = [
     'Frontend compilado con `--base-href /` y publicado.',
     '`https://…/up` responde 200 y se puede iniciar sesión.',
     'Prueba de punta a punta con una requisición real pequeña: captura, revisión, cotización, suficiencia, orden, factura (verificada en el SAT), CLC y pago.',
+    'Prueba de nómina: Recursos Humanos importa una quincena con la plantilla, Control Presupuestal la valida y se revisan las CLC por unidad.',
     'Presupuesto, calendario, cuentas bancarias, proveedores y usuarios cargados (6.1).',
     'Respaldo diario programado, copiado fuera del servidor y restauración probada (capítulo 7).',
     'Monitoreo de `/up` y revisión de logs asignados a una persona responsable.'
   ]),
   h1('Anexo. Estructura del repositorio'),
   tabla(['Ruta', 'Contenido'], [
-    ['`backend/app/Http/Controllers/Api`', 'Controladores de la API (requisiciones, órdenes, CLC, Tesorería, combustible, contratos, padrón, etc.).'],
-    ['`backend/app/Services`', 'Reglas de negocio: CFDI y SAT, trámite de CLC, presupuesto, pagos, Excel.'],
+    ['`backend/app/Http/Controllers/Api`', 'Controladores de la API (requisiciones, órdenes, CLC, Tesorería, combustible, contratos, padrón, nómina, etc.).'],
+    ['`backend/app/Services`', 'Reglas de negocio: CFDI y SAT, trámite de CLC, presupuesto, pagos, Excel, nómina (`GeneradorNomina`, `ExcelNomina`).'],
     ['`backend/database/migrations`', 'Cambios de la base de datos (se aplican con `migrate`).'],
     ['`backend/database/seeders/RolesSistemaSeeder.php`', 'Roles de los módulos nuevos.'],
     ['`backend/app/Console/Commands/SyncPermissions.php`', 'Comando `permissions:sync` (lista de permisos).'],
@@ -315,7 +326,8 @@ const contenido = [
     ['`backend/routes/api.php`', 'Rutas de la API y el permiso de cada una.'],
     ['`frontend/src/app/pages`', 'Pantallas del sistema, una carpeta por módulo.'],
     ['`frontend/src/environments`', '`environment.prod.ts`: `apiUrl: \'/api\'`.'],
-    ['`desplegar.sh`', 'Script de despliegue (capítulo 5).']
+    ['`desplegar.sh`', 'Script de despliegue (capítulo 5).'],
+    ['`docs/manuales/generador`', 'Generador de estos manuales (base de demostración, capturas y Word).']
   ], [4200, 5160])
 ];
 

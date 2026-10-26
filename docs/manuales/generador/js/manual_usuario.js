@@ -4,21 +4,22 @@ const { h1, h2, h3, p, l, n, nota, img, tabla } = B;
 
 reiniciar();
 const contenido = [
-  portada('Manual de usuario', 'Operación del sistema por área: requisiciones, CLC, trámites, combustible, Tesorería y padrón de proveedores', 'Versión 1.0 · Octubre de 2026'),
+  portada('Manual de usuario', 'Operación del sistema por área: requisiciones, CLC, trámites, combustible, nómina, Tesorería y padrón de proveedores', 'Versión 1.1 · Octubre de 2026'),
 
   // ------------------------------------------------------------------ 1
   h1('1. Introducción'),
   p('SIEG (Sistema Integral de Egresos Municipales) concentra en un solo lugar el ciclo del gasto del Ayuntamiento de Guadalupe: desde que un área pide un bien o servicio hasta que Tesorería lo paga y lo concilia con el banco.'),
   p('El ciclo completo es:'),
   p('**Requisición → Suficiencia presupuestal → Orden de compra → Recepción → Factura → Compromiso → Devengado → CLC → Pago → Conciliación**'),
-  p('Además del ciclo de compra, el sistema incluye la bitácora de combustible por secretaría, el taller de mantenimiento vehicular, los trámites de servicios (con factura previa), los fondos revolventes, los arrendamientos y servicios por contrato, el padrón de proveedores del Órgano Interno de Control y la mesa de control de Tesorería.'),
+  p('Además del ciclo de compra, el sistema incluye la bitácora de combustible por secretaría, el taller de mantenimiento vehicular, los trámites de servicios (con factura previa), los fondos revolventes, los arrendamientos y servicios por contrato, el trámite de pago de la nómina (incluidos seguridad social, finiquitos y laudos), el padrón de proveedores del Órgano Interno de Control y la mesa de control de Tesorería.'),
   h2('1.1 A quién va dirigido'),
   p('A todo el personal que usa SIEG. Cada capítulo indica qué área lo opera. Lo que cada persona ve en el menú depende de los permisos de su rol (ver el Anexo A).'),
   tabla(['Área', 'Qué hace en SIEG'], [
     ['Áreas solicitantes (enlaces administrativos)', 'Capturan requisiciones, trámites de servicios, fondos revolventes, contratos y su bitácora de combustible; generan la CLC de sus compras.'],
     ['Subdirección Administrativa', 'Valida requisiciones y autoriza las extemporáneas.'],
     ['Recursos Materiales', 'Recibe y cotiza requisiciones, genera órdenes de compra, carga facturas, valida trámites y bitácoras, autoriza contratos y opera el almacén.'],
-    ['Control Presupuestal', 'Valida la suficiencia presupuestal, autoriza modificaciones y revisa las CLC.'],
+    ['Control Presupuestal', 'Valida la suficiencia presupuestal, autoriza modificaciones, valida la nómina (genera sus CLC) y revisa las CLC.'],
+    ['Recursos Humanos', 'Importa la nómina generada en Nomipac y captura los pagos de seguridad social, finiquitos y laudos.'],
     ['Sindicatura', 'Firma las CLC (recibe y regresa las relaciones).'],
     ['Egresos / Tesorería', 'Recibe las CLC, paga a proveedores, concilia con el estado de cuenta y emite los reportes bancarios.'],
     ['Control de combustible', 'Sube las facturas y el Excel mensual del proveedor de combustible.'],
@@ -96,6 +97,7 @@ const contenido = [
   ]),
   img('05-requisicion-nueva', 'Captura de una requisición nueva. El aviso amarillo indica que se está fuera del periodo de captura.'),
   nota('Los precios no se capturan aquí: los pone Recursos Materiales al cotizar. En las requisiciones de mantenimiento vehicular sí se captura el precio desde el taller.'),
+  nota('Las partidas del **capítulo 1000** (servicios personales: sueldos, prestaciones y seguridad social) no aparecen en las requisiciones de las áreas: solo las ejerce Recursos Humanos con la nómina (capítulo 15). Lo mismo aplica en los trámites de servicios, fondos revolventes, contratos y modificaciones presupuestales.'),
   h2('3.3 Periodo de captura y requisiciones extemporáneas'),
   p('Las requisiciones se capturan en el periodo de cada mes definido en **Requisiciones → Calendario de captura** (por omisión, del 1 al 7). Fuera de ese periodo el sistema avisa y la requisición queda **extemporánea**: no se puede enviar a revisión hasta que la Subdirección Administrativa la autorice con **Autorizar extemporánea**. Al autorizarla pasa sola a revisión y queda registrado quién y cuándo la autorizó.'),
   img('07-requisicion-extemporanea', 'Requisición extemporánea en espera de la autorización de la Subdirección Administrativa.'),
@@ -158,7 +160,8 @@ const contenido = [
     'Los envíos a Sindicatura y de regreso generan una **relación** (REL-AÑO-0001) que se imprime para acompañar las CLC físicas; se consultan en la pestaña **Relaciones**.',
     'Control Presupuestal puede **Devolver a Recursos Materiales** una CLC con observaciones.',
     'La pestaña **Seguimiento** muestra dónde está cualquier CLC; el botón de Excel exporta el listado.',
-    'Las CLC de trámites de servicios, fondos, contratos y combustible siguen el mismo recorrido.'
+    'Las CLC de trámites de servicios, fondos, contratos y combustible siguen el mismo recorrido.',
+    'Las CLC de **nómina**, finiquitos y laudos entran ya **En revisión (Control Presupuestal)**: no pasan por el área ni por Recursos Materiales, porque Control Presupuestal las revisó al validar la nómina (capítulo 15).'
   ]),
 
   // ------------------------------------------------------------------ 5
@@ -322,15 +325,57 @@ const contenido = [
   img('39-isr', 'Reporte mensual de ISR retenido.'),
 
   // ------------------------------------------------------------------ 15
-  h1('15. Catálogos'),
+  h1('15. Nómina y pagos de personal'),
+  p('El cálculo y el timbrado de la nómina siguen en **Nomipac**. En SIEG, Recursos Humanos registra el **trámite de pago** con su afectación presupuestal y Control Presupuestal lo valida: al validarlo se genera **una CLC por unidad administrativa** con todos sus conceptos.'),
+  tabla(['Tipo', 'Cómo se capturan los conceptos', 'A favor de quién va la CLC'], [
+    ['Nómina', 'Se importa el Excel (plantilla) con lo que genera Nomipac.', 'La cuenta pagadora de nómina.'],
+    ['Seguridad social (IMSS / ISSSTEZAC)', 'Se importa el Excel o se capturan a mano.', 'La institución.'],
+    ['Finiquito', 'Se capturan a mano; lleva el oficio que lo respalda.', 'La persona, con su número de empleado.'],
+    ['Laudo', 'Se capturan a mano; lleva el número de expediente.', 'El trabajador o actor.']
+  ], [2600, 3900, 2860]),
+  img('55-nominas', 'Nómina y pagos de personal: los trámites con su tipo, periodo, total y estado.'),
+  h2('15.1 Registrar el trámite (Recursos Humanos)'),
+  n([
+    'En **Nómina (Recursos Humanos)** presiona **Nuevo trámite**.',
+    'Elige el **Tipo**. Captura el **Periodo** (por ejemplo, 1a quincena de octubre 2026), la **Fecha de pago** y el **Concepto**.',
+    'Revisa **A favor de**: se propone la cuenta pagadora de nómina o el IMSS según el tipo; cámbialo si es otro (por ejemplo, ISSSTEZAC). En finiquitos y laudos escribe el nombre de la persona y su **Número de empleado**.',
+    'En **Referencia** escribe el número de la nómina en Nomipac. En finiquitos y laudos es obligatorio el **Oficio o expediente**.',
+    'Presiona **Registrar**.'
+  ]),
+  img('56-nomina-nueva', 'Registro de un trámite de nómina.'),
+  h2('15.2 Importar la nómina de Nomipac'),
+  n([
+    'Presiona **Plantilla de importación** para descargar el Excel con sus columnas: **Unidad** (clave presupuestal de la unidad administrativa), **Fuente**, **Proyecto**, **Partida**, **Concepto** e **Importe**.',
+    'Acomoda en la plantilla lo que genera Nomipac: un renglón por concepto y unidad (por ejemplo, sueldos base de la Secretaría de Gobierno).',
+    'En el detalle del trámite selecciona el archivo y presiona **Importar (reemplaza los conceptos)**.',
+    'Revisa los conceptos y la tabla de **Suficiencia presupuestal**, y presiona **Enviar a validar**.'
+  ]),
+  nota('Si algún renglón trae una unidad o una línea de presupuesto (fuente, proyecto, partida) que no existe, el archivo se rechaza completo y se indica la fila. Volver a importar reemplaza todos los conceptos.'),
+  p('También se pueden **agregar conceptos a mano** (unidad, partida, proyecto, fuente, concepto e importe) o **Quitar** alguno mientras el trámite está en captura. Así se capturan los finiquitos y laudos.'),
+  img('60-laudo-captura', 'Laudo en captura: el concepto se agrega a mano con su unidad y su partida.'),
+  h2('15.3 Validar (Control Presupuestal)'),
+  p('El trámite enviado aparece **Por validar**. La tabla de **Suficiencia presupuestal** muestra, por unidad y partida, lo que pide la nómina contra el disponible:'),
+  l([
+    '**Validar y generar CLC**: si todas las partidas alcanzan, se generan por cada unidad la requisición (comprometida), el registro sin factura (folio PN-AÑO-0001) y la CLC. El gasto queda **ejercido** en el presupuesto.',
+    '**Regresar a RH**: con observaciones; Recursos Humanos corrige y la vuelve a enviar.',
+    'Si alguna partida no alcanza, no se valida nada y se indica cuál: hace falta una modificación presupuestal antes.'
+  ]),
+  img('57-nomina-por-validar', 'Nómina por validar: suficiencia por partida y sus conceptos.'),
+  img('58-nomina-validada', 'Nómina validada: una CLC por unidad administrativa, ya en Control Presupuestal.'),
+  p('Las CLC se imprimen desde el trámite con **Imprimir CLC** y siguen el trámite de CLC desde Control Presupuestal (Sindicatura, Egresos y pago). La CLC lleva como documento de referencia el número de nómina, oficio o expediente.'),
+  img('59-finiquito', 'Finiquito validado, con su CLC a favor de la persona.'),
+  nota('Un trámite se puede **Cancelar** antes de validarse. Ya validado, sus CLC se cancelan desde el trámite de CLC, como cualquier otra.'),
+
+  // ------------------------------------------------------------------ 16
+  h1('16. Catálogos'),
   p('**Catálogos generales** reúne los catálogos del sistema: secretarías, departamentos, proveedores, vehículos, bancos, cuentas bancarias, fuentes de financiamiento, ejercicios fiscales, calendarios de captura y otros. Cada catálogo permite buscar, dar de alta, editar y desactivar, según los permisos.'),
   img('43-catalogos', 'Catálogos generales.'),
   img('44-calendario', 'Calendario de captura de requisiciones: inicio y fin del periodo de cada mes.'),
   nota('En **Ejercicios fiscales** se definen los días de captura por omisión y se **cierra** un ejercicio: un ejercicio cerrado ya no admite requisiciones nuevas.'),
 
-  // ------------------------------------------------------------------ 16
-  h1('16. Administración'),
-  h2('16.1 Usuarios, roles y permisos'),
+  // ------------------------------------------------------------------ 17
+  h1('17. Administración'),
+  h2('17.1 Usuarios, roles y permisos'),
   l([
     '**Usuarios**: alta, edición, rol, secretaría a la que pertenece (lo que ve de su área) y activación.',
     '**Roles**: conjuntos de permisos (ver el Anexo A). Un usuario puede tener varios.',
@@ -338,16 +383,16 @@ const contenido = [
   ]),
   img('47-usuarios', 'Usuarios del sistema.'),
   img('48-roles', 'Roles y su número de permisos.'),
-  h2('16.2 Tickets de soporte'),
+  h2('17.2 Tickets de soporte'),
   p('Cualquier usuario puede levantar un **ticket** (título, descripción, prioridad y, opcionalmente, una captura). El equipo de sistemas lo atiende, comenta y cambia su estado; quien lo levantó recibe la notificación en la campana.'),
   img('49-tickets', 'Tickets de soporte.'),
   img('50-ticket', 'Detalle de un ticket con sus comentarios.'),
-  h2('16.3 Bitácora de auditoría'),
+  h2('17.3 Bitácora de auditoría'),
   p('Registra quién creó, cambió o borró cada registro y cuándo, con los valores anteriores y nuevos. Se filtra por usuario, módulo y fecha.'),
   img('51-auditoria', 'Bitácora de auditoría.'),
 
-  // ------------------------------------------------------------------ 17
-  h1('17. Preguntas frecuentes'),
+  // ------------------------------------------------------------------ 18
+  h1('18. Preguntas frecuentes'),
   tabla(['Situación', 'Qué hacer'], [
     ['No veo una opción del menú.', 'Tu rol no tiene ese permiso. Pídelo a la administración del sistema.'],
     ['No puedo enviar mi requisición a revisión.', 'Es extemporánea: la Subdirección Administrativa debe autorizarla. Revisa también que esté Pendiente o Rechazada.'],
@@ -356,19 +401,24 @@ const contenido = [
     ['La factura se rechaza por el uso de CFDI o el régimen.', 'El proveedor debe refacturar a nombre del Ayuntamiento con régimen 603 y uso G03 (u otro aceptado).'],
     ['La factura dice que ya se cargó.', 'Ese UUID (o la misma serie y folio del emisor) ya está en otra orden, trámite o bitácora. Búscala en Facturas.'],
     ['El Excel de combustible no carga.', 'Revisa los errores de la vista previa: claves de secretaría que no existen, facturas repartidas en dos secretarías o columnas sin el nombre esperado.'],
-    ['Pagué una CLC por error.', 'Desde el detalle del pago, quita la conciliación (si la tiene) y cancela el pago: la CLC vuelve a la mesa de control.']
+    ['Pagué una CLC por error.', 'Desde el detalle del pago, quita la conciliación (si la tiene) y cancela el pago: la CLC vuelve a la mesa de control.'],
+    ['No aparece una partida 1xxx (sueldos, prestaciones).', 'Es del capítulo 1000: solo la ejerce Recursos Humanos con la nómina.'],
+    ['El Excel de la nómina no se importa.', 'Revisa las filas que indica el mensaje: la clave de la unidad, la fuente, el proyecto o la partida no existen en el presupuesto, o el importe no es mayor que cero.'],
+    ['No se puede validar la nómina.', 'Alguna partida no tiene suficiencia (en rojo en la tabla): solicita una modificación presupuestal y vuelve a validar.']
   ], [3600, 5760]),
 
   // ------------------------------------------------------------------ A
   h1('Anexo A. Roles del sistema'),
-  p('Roles creados para los módulos de combustible, Tesorería, contratos, padrón y Contabilidad. Los roles **Super Admin** y **Admin** tienen todos los permisos; los demás roles del Ayuntamiento (por ejemplo Control Presupuestal o Sindicatura) se configuran en **Administración → Roles**.'),
+  p('Roles creados para los módulos de combustible, Tesorería, contratos, padrón, Contabilidad y nómina. Los roles **Super Admin** y **Admin** tienen todos los permisos; los demás roles del Ayuntamiento (por ejemplo Sindicatura) se configuran en **Administración → Roles**.'),
   tabla(['Rol', 'Permisos principales'], [
     ['Área solicitante', 'Trámites de servicios, fondos revolventes, bitácoras de combustible y contratos: consultar y capturar.'],
     ['Recursos Materiales', 'Validar trámites de servicios y bitácoras de combustible, autorizar contratos, consultar el padrón.'],
     ['Control de combustible', 'Subir facturas y el Excel del proveedor; llenar bitácoras.'],
     ['Órgano Interno de Control', 'Consultar y gestionar el padrón de proveedores (expediente, cédulas, suspensión).'],
     ['Tesorería', 'Mesa de control, pagos, conciliación y catálogo de cuentas bancarias.'],
-    ['Contabilidad', 'Reporte mensual de ISR retenido.']
+    ['Contabilidad', 'Reporte mensual de ISR retenido.'],
+    ['Recursos Humanos', 'Importar la nómina y capturar seguridad social, finiquitos y laudos; usar partidas del capítulo 1000.'],
+    ['Control Presupuestal', 'Validar la nómina, los finiquitos y laudos (genera sus CLC); usar partidas del capítulo 1000.']
   ], [3000, 6360]),
   h1('Anexo B. Estados de la CLC'),
   tabla(['Estado', 'Dónde está'], [
