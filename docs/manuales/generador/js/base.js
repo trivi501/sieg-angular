@@ -12,10 +12,13 @@ const IMG = path.join(__dirname, '..', 'imgj');
 const LOGO = path.join(__dirname, '..', '..', '..', '..', 'frontend', 'src', 'assets', 'images', 'logo-guadalupe.png');
 const ANCHO = 9360; // 6.5" en DXA
 
-const medidas = Object.fromEntries(
-  fs.readFileSync(path.join(IMG, 'medidas.txt'), 'utf8').trim().split('\n')
-    .map((l) => l.trim().split(/\s+/)).map(([n, w, h]) => [n, [Number(w), Number(h)]])
-);
+// Sin capturas (documentos solo de texto, como los del expediente de entregables) no hay medidas.
+const medidas = fs.existsSync(path.join(IMG, 'medidas.txt'))
+  ? Object.fromEntries(
+    fs.readFileSync(path.join(IMG, 'medidas.txt'), 'utf8').trim().split('\n')
+      .map((l) => l.trim().split(/\s+/)).map(([n, w, h]) => [n, [Number(w), Number(h)]])
+  )
+  : {};
 
 /** Texto con **negritas** y `código`. */
 function runs(texto, base = {}) {
