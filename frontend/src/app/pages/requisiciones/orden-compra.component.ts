@@ -113,7 +113,7 @@ export class OrdenCompraComponent {
       boton: 'Generar CLC',
       clase: 'btn-primary',
       texto:
-        'La cuenta por liquidar certificada es la solicitud de pago al proveedor. Queda en el área para que la envíe a Recursos Materiales (Trámite de CLC).'
+        'La cuenta por liquidar certificada es la solicitud de pago al proveedor. Queda en el área para que la envíe a Recursos Materiales (Seguimiento CLC).'
     },
     cancelarClc: {
       titulo: 'Cancelar CLC',

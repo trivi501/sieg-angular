@@ -57,7 +57,7 @@ export const NavigationItems: NavigationItem[] = [
       },
       {
         id: 'requisiciones-menu',
-        title: 'Requisiciones',
+        title: 'Trámite',
         type: 'collapse',
         icon: 'file-text',
         children: [
@@ -68,6 +68,13 @@ export const NavigationItems: NavigationItem[] = [
             url: '/requisiciones',
             exactMatch: true, // /requisiciones/gasto tiene su propia entrada.
             permission: 'requisiciones-index'
+          },
+          {
+            id: 'clc',
+            title: 'Seguimiento CLC',
+            type: 'item',
+            url: '/clc',
+            permission: 'clc-index'
           },
           {
             id: 'servicios',
@@ -193,15 +200,6 @@ export const NavigationItems: NavigationItem[] = [
         url: '/padron',
         icon: 'safety-certificate',
         permission: 'padron-index'
-      },
-      {
-        id: 'clc',
-        title: 'Trámite de CLC',
-        type: 'item',
-        classes: 'nav-item',
-        url: '/clc',
-        icon: 'swap',
-        permission: 'clc-index'
       },
       {
         id: 'facturas',

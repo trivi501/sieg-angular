@@ -154,7 +154,7 @@ export class RequisicionDetalleComponent {
     clcApoyo: {
       ruta: 'clc',
       titulo: 'Generar CLC del apoyo',
-      texto: 'Apoyo sin factura: se genera la CLC a favor del beneficiario (sin orden de compra ni factura). Después se envía en el Trámite de CLC.',
+      texto: 'Apoyo sin factura: se genera la CLC a favor del beneficiario (sin orden de compra ni factura). Después se envía en Seguimiento CLC.',
       boton: 'Generar CLC',
       clase: 'btn-primary'
     }
