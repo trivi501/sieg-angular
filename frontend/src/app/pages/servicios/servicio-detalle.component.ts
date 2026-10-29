@@ -1,8 +1,9 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, TemplateRef, computed, inject, signal, viewChild } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { NgbModal, NgbModalRef } from '@ng-bootstrap/ng-bootstrap';
 import { forkJoin, of } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 
@@ -12,7 +13,18 @@ import { money } from 'src/app/core/formato';
 import { RequisicionesService, abrirBlob } from '../requisiciones/requisiciones.service';
 import { AccionComponent } from 'src/app/shared/accion.component';
 import { SelectBusquedaDirective } from 'src/app/shared/select-busqueda.directive';
-import { DetalleTramite, FacturaTramite, LineaTramite, NOMBRE_TIPO, RUTA_TIPO, ServiciosService, TipoTramite, claseEstadoTramite } from './servicios.service';
+import {
+  DetalleTramite,
+  FacturaTramite,
+  LineaTramite,
+  NOMBRE_TIPO,
+  RUTA_TIPO,
+  RevisionFactura,
+  ServiciosService,
+  TipoTramite,
+  claseEstadoTramite,
+  claseRevision
+} from './servicios.service';
 import { CombustibleService, TicketCombustible, litros } from '../combustible/combustible.service';
 
 type Aviso = { tipo: 'success' | 'danger' | 'warning'; texto: string };
@@ -25,6 +37,8 @@ type LineaArticulo = { partida: string; proyecto: string; fuente: string };
  * Un trámite de servicios: subir facturas (XML), ver su contenido, clasificar cada una (partida / proyecto /
  * fuente y concepto), enviarlo a validar; Recursos Materiales lo valida o lo regresa con observaciones; ya
  * validado, se imprimen requisición, orden de compra y CLC.
+ * Fondo revolvente: cada factura se abre en una ventana (factura por factura) para clasificarla, sustituir su XML
+ * o quitarla; va directo a Control Presupuestal, que en la misma ventana valida o no cada factura.
  */
 @Component({
   selector: 'app-servicio-detalle',
@@ -39,6 +53,19 @@ type LineaArticulo = { partida: string; proyecto: string; fuente: string };
       font-size: 11px;
       word-break: break-all;
     }
+    .fila-factura {
+      cursor: pointer;
+    }
+    .min-w-0 {
+      min-width: 0;
+    }
+    .datos-cfdi {
+      background: var(--bs-tertiary-bg, #f8f9fa);
+      border-radius: 8px;
+      padding: 10px 6px;
+      margin-left: 0;
+      margin-right: 0;
+    }
   `
 })
 export class ServicioDetalleComponent {
@@ -46,6 +73,7 @@ export class ServicioDetalleComponent {
   private combustibles = inject(CombustibleService);
   private requisiciones = inject(RequisicionesService);
   private router = inject(Router);
+  private modal = inject(NgbModal);
 
   private readonly ruta = inject(ActivatedRoute).snapshot;
   readonly id = Number(this.ruta.paramMap.get('id'));
@@ -60,6 +88,7 @@ export class ServicioDetalleComponent {
   readonly money = money;
   readonly litros = litros;
   readonly clase = claseEstadoTramite;
+  readonly claseRevision = claseRevision;
 
   d = signal<DetalleTramite | null>(null);
   error = signal('');
@@ -85,11 +114,25 @@ export class ServicioDetalleComponent {
   verTickets = signal(false);
   todas: Clasificacion = { partida: '', proyecto: '', fuente: '', concepto: '' };
 
+  /** Fondo: la factura abierta en la ventana (por id), su posición y lo que se escribe al no validarla. */
+  private readonly tplFactura = viewChild.required<TemplateRef<unknown>>('facturaTpl');
+  private ventana: NgbModalRef | null = null;
+  facturaAbierta = signal<number | null>(null);
+  enVentana = computed(() => this.d()?.facturas.find((f) => f.id === this.facturaAbierta()) ?? null);
+  posicion = computed(() => (this.d()?.facturas ?? []).findIndex((f) => f.id === this.facturaAbierta()));
+  observacionFactura = '';
+  confirmarQuitar = signal(false);
+  /** Fondo: cuántas facturas van validadas y no validadas. */
+  revisadas = computed(() => {
+    const fs = this.d()?.facturas ?? [];
+    return { validadas: fs.filter((f) => f.revision === 'validada').length, rechazadas: fs.filter((f) => f.revision === 'rechazada').length, total: fs.length };
+  });
+
   constructor() {
     this.cargar();
   }
 
-  cargar(): void {
+  cargar(despues?: (d: DetalleTramite) => void): void {
     this.servicio.detalle(this.tipo, this.id).subscribe({
       next: (d) => {
         this.d.set(d);
@@ -109,6 +152,7 @@ export class ServicioDetalleComponent {
         if (this.combustible && !this.todas.partida) {
           this.todas = { partida: primera?.partida ?? '', proyecto: primera?.proyecto ?? '', fuente: primera?.fuente ?? '', concepto: primera?.concepto ?? d.tramite.concepto };
         }
+        despues?.(d);
       },
       error: (e: HttpErrorResponse) => this.error.set(e.status === 404 ? 'No existe.' : erroresDe(e).mensaje)
     });
@@ -141,7 +185,99 @@ export class ServicioDetalleComponent {
         tipo: errores.length ? 'danger' : aviso ? 'warning' : 'success',
         texto: [...rs.map((r) => r.message), ...(aviso ? [aviso] : [])].join(' · ')
       });
-      this.cargar();
+      // Fondo: se abre la primera factura sin clasificar para seguir factura por factura.
+      this.cargar((d) => {
+        const pendiente = this.fondo && errores.length < rs.length ? d.facturas.find((f) => !f.clasificada) : undefined;
+        if (pendiente) this.abrirFactura(pendiente);
+      });
+    });
+  }
+
+  // --- Fondo: ventana de una factura ---
+
+  abrirFactura(f: FacturaTramite): void {
+    this.facturaAbierta.set(f.id);
+    this.observacionFactura = f.revision_observaciones ?? '';
+    this.confirmarQuitar.set(false);
+    this.avisoVentana.set(null);
+    if (this.ventana) return;
+    this.ventana = this.modal.open(this.tplFactura(), { size: 'xl', scrollable: true, backdrop: 'static' });
+    const cerrar = () => {
+      this.ventana = null;
+      this.facturaAbierta.set(null);
+    };
+    this.ventana.result.then(cerrar, cerrar);
+  }
+
+  /** Anterior / siguiente factura del fondo. */
+  mover(paso: number): void {
+    const fs = this.d()?.facturas ?? [];
+    const f = fs[this.posicion() + paso];
+    if (f) this.abrirFactura(f);
+  }
+
+  /**
+   * Después de guardar o revisar: la siguiente que falte (sin clasificar o por revisar), empezando después de la
+   * actual; si ya no hay, se cierra la ventana.
+   */
+  private siguientePendiente(d: DetalleTramite, desde: number, mensaje: string): void {
+    const falta = (f: FacturaTramite) => (d.puede.revisar ? f.revision === null : !f.clasificada);
+    const orden = [...d.facturas.slice(desde + 1), ...d.facturas.slice(0, desde + 1)];
+    const f = orden.find(falta);
+    if (f) {
+      this.abrirFactura(f);
+      this.avisoVentana.set({ tipo: 'success', texto: mensaje });
+      return;
+    }
+    this.ventana?.close();
+    this.aviso.set({
+      tipo: 'success',
+      texto: `${mensaje} ${d.puede.revisar ? 'Ya están revisadas todas las facturas.' : 'Ya están clasificadas todas las facturas.'}`
+    });
+  }
+
+  avisoVentana = signal<Aviso | null>(null);
+
+  /** Control Presupuestal valida o no la factura abierta y pasa a la siguiente por revisar. */
+  revisar(f: FacturaTramite, revision: RevisionFactura | 'pendiente'): void {
+    const desde = this.posicion();
+    this.ocupado.set(true);
+    this.servicio.revisar(this.tipo, this.id, f.id, revision, revision === 'rechazada' ? this.observacionFactura || null : null).subscribe({
+      next: (r) => {
+        this.ocupado.set(false);
+        this.erroresFactura.set({ ...this.erroresFactura(), [f.id]: '' });
+        this.cargar((d) => (revision === 'pendiente' ? this.abrirFactura(f) : this.siguientePendiente(d, desde, r.message)));
+      },
+      error: (e: HttpErrorResponse) => {
+        this.ocupado.set(false);
+        const { campos, mensaje } = erroresDe(e);
+        this.erroresFactura.set({ ...this.erroresFactura(), [f.id]: Object.values(campos)[0] ?? mensaje });
+      }
+    });
+  }
+
+  /** Sustituye el XML de la factura abierta: la nueva queda abierta para clasificarla. */
+  sustituirXml(f: FacturaTramite, evento: Event): void {
+    const input = evento.target as HTMLInputElement;
+    const archivo = input.files?.[0];
+    if (!archivo) return;
+    this.ocupado.set(true);
+    this.servicio.sustituirXml(this.tipo, this.id, f.id, archivo).subscribe({
+      next: (r) => {
+        this.ocupado.set(false);
+        input.value = '';
+        this.cargar((d) => {
+          const nueva = d.facturas.find((x) => x.id === r.id);
+          if (nueva) this.abrirFactura(nueva);
+          this.avisoVentana.set({ tipo: r.aviso ? 'warning' : 'success', texto: [r.message, r.aviso].filter((x) => !!x).join(' · ') });
+        });
+      },
+      error: (e: HttpErrorResponse) => {
+        this.ocupado.set(false);
+        input.value = '';
+        const { campos, mensaje } = erroresDe(e);
+        this.erroresFactura.set({ ...this.erroresFactura(), [f.id]: campos['xml'] ?? mensaje });
+      }
     });
   }
 
@@ -216,7 +352,9 @@ export class ServicioDetalleComponent {
     this.articulos[f.id] = this.articulos[f.id].map(() => ({ ...primero }));
   }
 
-  guardarClasificacion(f: FacturaTramite): void {
+  /** siguiente: en la ventana del fondo, pasa a la siguiente factura sin clasificar. */
+  guardarClasificacion(f: FacturaTramite, siguiente = false): void {
+    const desde = this.posicion();
     const c = this.clasif[f.id];
     const datos = this.fondo
       ? {
@@ -227,8 +365,12 @@ export class ServicioDetalleComponent {
         }
       : { partida: c.partida || null, proyecto: c.proyecto || null, fuente: c.fuente || null, concepto: c.concepto || null };
     this.servicio.clasificar(this.tipo, this.id, f.id, datos).subscribe({
-      next: () => {
+      next: (r) => {
         this.erroresFactura.set({ ...this.erroresFactura(), [f.id]: '' });
+        if (this.ventana) {
+          this.cargar((d) => (siguiente ? this.siguientePendiente(d, desde, r.message) : this.avisoVentana.set({ tipo: 'success', texto: r.message })));
+          return;
+        }
         this.aviso.set({ tipo: 'success', texto: `Factura ${f.serie_folio ?? f.uuid} clasificada.` });
         this.cargar();
       },
@@ -239,12 +381,22 @@ export class ServicioDetalleComponent {
     });
   }
 
-  quitar(f: FacturaTramite): void {
-    if (!confirm(`¿Quitar la factura ${f.serie_folio ?? f.uuid} del trámite?`)) return;
+  /** confirmado: ya se confirmó en la ventana del fondo (sin el cuadro del navegador). */
+  quitar(f: FacturaTramite, confirmado = false): void {
+    if (!confirmado && !confirm(`¿Quitar la factura ${f.serie_folio ?? f.uuid} del trámite?`)) return;
+    const desde = this.posicion();
     this.servicio.quitarFactura(this.tipo, this.id, f.id).subscribe({
       next: (r) => {
         this.aviso.set({ tipo: 'success', texto: r.message });
-        this.cargar();
+        this.cargar((d) => {
+          if (!this.ventana) return;
+          // En la ventana: la que quedó en su lugar (o la anterior); sin facturas, se cierra.
+          const otra = d.facturas[Math.min(desde, d.facturas.length - 1)];
+          if (otra) {
+            this.abrirFactura(otra);
+            this.avisoVentana.set({ tipo: 'success', texto: r.message });
+          } else this.ventana.close();
+        });
       },
       error: (e: HttpErrorResponse) => this.aviso.set({ tipo: 'danger', texto: erroresDe(e).mensaje })
     });

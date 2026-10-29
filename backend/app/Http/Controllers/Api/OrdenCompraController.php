@@ -387,7 +387,7 @@ class OrdenCompraController extends Controller
             $errores[] = "La factura {$cfdi['uuid']} ya está cargada en {$donde($mismoUuid)}.";
         }
 
-        $enTramite = \App\Models\TramiteServicioFactura::with('tramite:id,folio_completo')->where('uuid', $cfdi['uuid'])->first();
+        $enTramite = \App\Models\TramiteServicioFactura::with('tramite:id,folio_completo')->where('uuid_activo', $cfdi['uuid'])->first();
         if ($enTramite) {
             $errores[] = "La factura {$cfdi['uuid']} ya está en el trámite de servicios {$enTramite->tramite?->folio_completo}.";
         }
@@ -462,7 +462,7 @@ class OrdenCompraController extends Controller
 
         DB::transaction(fn () => $this->crearClc($ordenCompra));
 
-        return response()->json(['message' => "CLC {$ordenCompra->clc_folio_completo} generada. Sigue enviarla a Recursos Materiales (Trámite de CLC)."]);
+        return response()->json(['message' => "CLC {$ordenCompra->clc_folio_completo} generada. Sigue enviarla a Recursos Materiales (Seguimiento CLC)."]);
     }
 
     /**
@@ -506,7 +506,7 @@ class OrdenCompraController extends Controller
             return $apoyo;
         });
 
-        return response()->json(['message' => "CLC {$apoyo->clc_folio_completo} generada para el apoyo a {$requisicion->beneficiario}. Sigue enviarla en el Trámite de CLC."]);
+        return response()->json(['message' => "CLC {$apoyo->clc_folio_completo} generada para el apoyo a {$requisicion->beneficiario}. Sigue enviarla en Seguimiento CLC."]);
     }
 
     public function clcPdf(OrdenCompra $ordenCompra)
@@ -566,7 +566,7 @@ class OrdenCompraController extends Controller
             return $this->error('Esta orden de compra ya tiene su pago registrado.');
         }
         if ($ordenCompra->clc_estado !== 'recibida_egresos') {
-            return $this->error('El pago se registra cuando Egresos ya recibió la CLC (Trámite de CLC). Hoy está: '.TramiteClc::descripcion($ordenCompra->clc_estado).'.');
+            return $this->error('El pago se registra cuando Egresos ya recibió la CLC (Seguimiento CLC). Hoy está: '.TramiteClc::descripcion($ordenCompra->clc_estado).'.');
         }
 
         $tramite->ejecutar('pagar', [$ordenCompra->id], $request->user(), $request->only('pago_fecha', 'pago_forma', 'pago_referencia'));

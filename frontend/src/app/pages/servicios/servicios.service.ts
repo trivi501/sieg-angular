@@ -82,7 +82,15 @@ export interface FacturaTramite {
   /** Ya tiene su PDF (representación impresa). */
   pdf: boolean;
   clasificada: boolean;
+  /** Fondo: revisión de Control Presupuestal (null: por revisar). */
+  revision: RevisionFactura | null;
+  revision_texto: string | null;
+  revision_observaciones: string | null;
+  revisada_por: string | null;
+  revisada_at: string | null;
 }
+
+export type RevisionFactura = 'validada' | 'rechazada';
 
 export interface LineaTramite {
   fuente: string;
@@ -131,7 +139,9 @@ export interface DetalleTramite {
   tipos_gasto: Record<string, string> | null;
   por_tipo_gasto: { tipo: string | null; nombre: string; facturas: number; importe: number }[];
   lineas: LineaTramite[];
-  puede: { editar: boolean; enviar: boolean; validar: boolean; cancelar: boolean; documentos: boolean };
+  /** revisar: fondo enviado a validar; Control Presupuestal valida o no cada factura. */
+  /** cancelar_todo: fondo validado; al cancelarlo se cancelan también su CLC y su requisición. */
+  puede: { editar: boolean; enviar: boolean; validar: boolean; revisar: boolean; cancelar: boolean; cancelar_todo: boolean; documentos: boolean };
   /** Solo en una bitácora de combustible: sus facturas del Excel del proveedor y sus tickets. */
   combustible: ResumenCombustible | null;
 }
@@ -183,6 +193,18 @@ export class ServiciosService {
     return this.http.delete<Mensaje>(`${this.api(tipo)}/${id}/facturas/${factura}`);
   }
 
+  /** Sustituye el XML de una factura (la anterior se quita si la nueva pasa). */
+  sustituirXml(tipo: TipoTramite, id: number, factura: number, archivo: File) {
+    const datos = new FormData();
+    datos.append('xml', archivo);
+    return this.http.post<Mensaje>(`${this.api(tipo)}/${id}/facturas/${factura}/xml`, datos);
+  }
+
+  /** Fondo: Control Presupuestal valida o no una factura (pendiente la regresa a por revisar). */
+  revisar(tipo: TipoTramite, id: number, factura: number, revision: RevisionFactura | 'pendiente', observaciones: string | null = null) {
+    return this.http.post<Mensaje>(`${this.api(tipo)}/${id}/facturas/${factura}/revisar`, { revision, observaciones });
+  }
+
   descargarXml(tipo: TipoTramite, id: number, factura: number) {
     return this.http.get(`${this.api(tipo)}/${id}/facturas/${factura}/xml`, { responseType: 'blob' });
   }
@@ -200,6 +222,11 @@ export class ServiciosService {
   accion(tipo: TipoTramite, id: number, accion: 'enviar' | 'validar' | 'rechazar' | 'cancelar', datos: object = {}) {
     return this.http.post<Mensaje>(`${this.api(tipo)}/${id}/${accion}`, datos);
   }
+}
+
+/** Color de la revisión de una factura del fondo. */
+export function claseRevision(revision: RevisionFactura | null): string {
+  return revision === 'validada' ? 'bg-light-success text-success' : revision === 'rechazada' ? 'bg-light-danger text-danger' : 'bg-light-warning text-warning';
 }
 
 /** Color del estado del trámite. */

@@ -22,8 +22,10 @@ use Illuminate\Validation\ValidationException;
  *  - servicio (TS-…): facturas de un mismo proveedor registrado; cada factura con su partida; al validar se
  *    generan requisición, orden de compra y CLC.
  *  - fondo (FR-…, fondo revolvente): muchas facturas de distintos proveedores (registrados o no), de hasta
- *    $2,000 cada una; cada artículo con su partida; al validar se generan requisición y CLC a favor de un
- *    trabajador (sin banco, cuenta, CLABE ni RFC).
+ *    $2,000 cada una; cada artículo con su partida. Va directo a Control Presupuestal, que valida o no cada factura
+ *    por separado; las no validadas regresan al área (las corrige, sustituye su XML o las quita). Al validar el
+ *    fondo se generan requisición y CLC a favor de un trabajador (sin banco, cuenta, CLABE ni RFC), que queda ya
+ *    recibida en Control Presupuestal.
  *  - combustible (BC-…, bitácora de combustible): como un servicio, pero se crea al cargar el Excel del proveedor
  *    (CombustibleController) y solo acepta las facturas de sus tickets.
  * El área captura y lo envía a validar; quien tenga el permiso de validar lo valida o lo regresa con observaciones.
@@ -108,7 +110,7 @@ class TramiteServicioController extends Controller
         $this->autorizar($tramite);
         $user = $request->user();
         $fondo = $tramite->esFondo();
-        $tramite->load('facturas', 'unidadAdministrativa', 'usuario:id,name', 'validador:id,name', 'requisicion:id_tb_egreso_requisicion,folio_completo', 'ordenCompra');
+        $tramite->load('facturas.revisor:id,name', 'unidadAdministrativa', 'usuario:id,name', 'validador:id,name', 'requisicion:id_tb_egreso_requisicion,folio_completo', 'ordenCompra');
         $clave = trim((string) $tramite->unidadAdministrativa?->clave);
         $nombres = PresupuestoEgreso::where('CLAVE', $clave)->get(['PARTIDA', 'NOMBRE_PARTIDA'])
             ->mapWithKeys(fn ($p) => [trim((string) $p->PARTIDA) => trim((string) $p->NOMBRE_PARTIDA)]);
@@ -177,6 +179,12 @@ class TramiteServicioController extends Controller
                 'comision' => $f->comision,
                 'pdf' => $f->pdf_path !== null,
                 'clasificada' => $f->clasificada($fondo),
+                // Fondo: la revisión de Control Presupuestal de esta factura.
+                'revision' => $f->revision,
+                'revision_texto' => $fondo ? (TramiteServicioFactura::REVISIONES[$f->revision] ?? 'Por revisar') : null,
+                'revision_observaciones' => $f->revision_observaciones,
+                'revisada_por' => $f->revisor?->name,
+                'revisada_at' => $f->revisada_at?->toIso8601String(),
             ]),
             // Fondo: catálogo de tipos de gasto y cuánto va de cada uno.
             'tipos_gasto' => $fondo ? TramiteServicio::TIPOS_GASTO_FONDO : null,
@@ -192,8 +200,11 @@ class TramiteServicioController extends Controller
                 'editar' => $editable,
                 'enviar' => $editable,
                 'validar' => $tramite->estado === 'por_validar' && $user->can($tramite->permiso('validar')),
-                'cancelar' => in_array($tramite->estado, ['captura', 'rechazado', 'por_validar'], true)
-                    && ($user->can($tramite->permiso('create')) || $user->can($tramite->permiso('validar'))),
+                // Fondo: Control Presupuestal valida o no cada factura antes de validar el fondo.
+                'revisar' => $fondo && $tramite->estado === 'por_validar' && $user->can($tramite->permiso('validar')),
+                'cancelar' => $this->puedeCancelar($tramite, $user),
+                // Fondo validado: al cancelarlo se cancelan también su CLC y su requisición.
+                'cancelar_todo' => $tramite->estado === 'validado',
                 'documentos' => $tramite->estado === 'validado',
             ],
             'combustible' => $tramite->esCombustible() ? $this->resumenCombustible($tramite) : null,
@@ -295,8 +306,9 @@ class TramiteServicioController extends Controller
             }
             $factura->update(['conceptos' => $articulos, 'concepto' => mb_strtoupper(trim($validated['concepto'])), 'tipo_gasto' => $validated['tipo_gasto'],
                 'comision' => $validated['tipo_gasto'] === 'viaticos' ? mb_strtoupper(trim($validated['comision'])) : null]);
+            $factura->reiniciarRevision();
 
-            return response()->json(['message' => 'Artículos clasificados.']);
+            return response()->json(['message' => 'Factura '.($factura->serieFolio() ?? $factura->uuid).' clasificada.']);
         }
 
         $validated = $request->validate([
@@ -332,6 +344,59 @@ class TramiteServicioController extends Controller
         return response()->json(['message' => 'Factura quitada.']);
     }
 
+    /**
+     * Sustituye el XML de una factura (p. ej. una no validada): se agrega la nueva con las mismas validaciones y se
+     * quita la anterior. Si la nueva no pasa, la anterior se queda.
+     */
+    public function sustituirXml(Request $request, TramiteServicio $tramite, TramiteServicioFactura $factura, FacturasTramite $facturas): JsonResponse
+    {
+        $this->exigirEditable($tramite);
+        abort_unless($factura->tramite_servicio_id === $tramite->id, 404);
+        $request->validate(['xml' => 'required|file|max:2048'], [], ['xml' => 'factura (XML)']);
+        $anterior = $factura->serieFolio() ?? $factura->uuid;
+        $rutas = array_filter([$factura->xml_path, $factura->pdf_path]);
+        $r = $facturas->agregar($tramite, file_get_contents($request->file('xml')->getRealPath()));
+        $factura->delete();
+        Storage::disk('local')->delete(array_diff($rutas, array_filter([$r['factura']->xml_path])));
+
+        return response()->json(['id' => $r['factura']->id, 'message' => "Factura {$anterior} sustituida: {$r['message']} Clasifícala.", 'aviso' => $r['aviso']], 201);
+    }
+
+    /**
+     * Fondo revolvente: Control Presupuestal revisa una factura del fondo enviado a validar: la valida o no (con la
+     * observación para el área). El fondo se valida cuando todas están validadas.
+     */
+    public function revisarFactura(Request $request, TramiteServicio $tramite, TramiteServicioFactura $factura): JsonResponse
+    {
+        $this->autorizar($tramite);
+        abort_unless($tramite->esFondo() && $request->user()->can($tramite->permiso('validar')), 403);
+        abort_unless($factura->tramite_servicio_id === $tramite->id, 404);
+        if ($tramite->estado !== 'por_validar') {
+            return $this->error('Las facturas se revisan cuando el fondo está enviado a validar.');
+        }
+        $validated = $request->validate([
+            'revision' => 'required|in:validada,rechazada,pendiente',
+            'observaciones' => 'nullable|required_if:revision,rechazada|string|min:5|max:2000',
+        ], [
+            'observaciones.required_if' => 'Escribe por qué no se valida la factura.',
+            'observaciones.min' => 'Explica qué hay que corregir en la factura.',
+        ]);
+        $pendiente = $validated['revision'] === 'pendiente';
+        $factura->update([
+            'revision' => $pendiente ? null : $validated['revision'],
+            'revision_observaciones' => $validated['revision'] === 'rechazada' ? trim($validated['observaciones']) : null,
+            'revisada_at' => $pendiente ? null : now(),
+            'revisada_user_id' => $pendiente ? null : $request->user()->id,
+        ]);
+        $nombre = $factura->serieFolio() ?? $factura->uuid;
+
+        return response()->json(['message' => match ($validated['revision']) {
+            'validada' => "Factura {$nombre} validada.",
+            'rechazada' => "Factura {$nombre} no validada; regresa el fondo al área para que la corrija o la quite.",
+            default => "Factura {$nombre} otra vez por revisar.",
+        }]);
+    }
+
     public function descargarXml(TramiteServicio $tramite, TramiteServicioFactura $factura)
     {
         $this->autorizar($tramite);
@@ -349,6 +414,7 @@ class TramiteServicioController extends Controller
         $ruta = "tramites-servicio/{$tramite->año}/{$tramite->folio_completo}_{$factura->uuid}.pdf";
         Storage::disk('local')->put($ruta, file_get_contents($request->file('pdf')->getRealPath()));
         $factura->update(['pdf_path' => $ruta]);
+        $factura->reiniciarRevision();
 
         return response()->json(['message' => 'PDF de la factura guardado.']);
     }
@@ -388,9 +454,11 @@ class TramiteServicioController extends Controller
             return $this->error($impedimento);
         }
 
-        $tramite->update(['estado' => 'por_validar', 'enviado_at' => now()]);
+        $tramite->update(['estado' => 'por_validar', 'enviado_at' => now(), 'observaciones' => $fondo ? null : $tramite->observaciones]);
 
-        return response()->json(['message' => "{$tramite->folio_completo} enviado a validar."]);
+        return response()->json(['message' => $fondo
+            ? "{$tramite->folio_completo} enviado a Control Presupuestal: revisa cada factura y lo valida."
+            : "{$tramite->folio_completo} enviado a validar."]);
     }
 
     /** Lo valida quien tiene el permiso: se generan la requisición y la CLC (y en servicios, la orden de compra). */
@@ -398,12 +466,21 @@ class TramiteServicioController extends Controller
     {
         $this->autorizar($tramite);
         abort_unless($request->user()->can($tramite->permiso('validar')), 403);
+        if ($tramite->esFondo() && $tramite->estado === 'por_validar') {
+            $facturas = $tramite->facturas()->get();
+            if ($rechazadas = $facturas->where('revision', 'rechazada')->count()) {
+                return $this->error("Hay {$rechazadas} factura(s) no validada(s): regresa el fondo al área para que las corrija o las quite.");
+            }
+            if ($pendientes = $facturas->where('revision', '!==', 'validada')->count()) {
+                return $this->error("Falta revisar {$pendientes} factura(s): valida cada factura antes de validar el fondo.");
+            }
+        }
         $requisicion = $generador->generar($tramite, $request->user());
         $orden = OrdenCompra::where('tramite_servicio_id', $tramite->id)->first();
 
         return response()->json([
             'message' => $tramite->esFondo()
-                ? "Fondo revolvente validado: requisición {$requisicion->folio_completo} y CLC {$orden?->clc_folio_completo} a favor de {$tramite->trabajador_nombre}. Ya se pueden imprimir."
+                ? "Fondo revolvente validado: requisición {$requisicion->folio_completo} y CLC {$orden?->clc_folio_completo} a favor de {$tramite->trabajador_nombre}; la CLC ya está recibida en Control Presupuestal. Ya se pueden imprimir."
                 : ($tramite->esCombustible() ? 'Bitácora de combustible validada' : 'Trámite validado').": requisición {$requisicion->folio_completo}, orden de compra {$orden?->folio_completo} y CLC {$orden?->clc_folio_completo} generadas. Ya se pueden imprimir.",
         ]);
     }
@@ -416,23 +493,45 @@ class TramiteServicioController extends Controller
         if ($tramite->estado !== 'por_validar') {
             return $this->error('Solo se regresa uno enviado a validar.');
         }
-        $validated = $request->validate(['observaciones' => 'required|string|min:5|max:3000'],
+        // Fondo: si ya hay facturas no validadas, sus observaciones bastan (las generales son opcionales).
+        $rechazadas = $tramite->esFondo() ? $tramite->facturas()->where('revision', 'rechazada')->get() : collect();
+        $validated = $request->validate(['observaciones' => ($rechazadas->isEmpty() ? 'required' : 'nullable').'|string|min:5|max:3000'],
             ['observaciones.required' => 'Escribe las observaciones para el área.', 'observaciones.min' => 'Explica qué hay que corregir.']);
-        $tramite->update(['estado' => 'rechazado', 'observaciones' => trim($validated['observaciones'])]);
+        $observaciones = trim((string) ($validated['observaciones'] ?? ''))
+            ?: "{$rechazadas->count()} factura(s) no validada(s): corrígelas, sustitúyelas o quítalas y vuelve a enviarlo.";
+        $tramite->update(['estado' => 'rechazado', 'observaciones' => $observaciones]);
 
         return response()->json(['message' => "{$tramite->folio_completo} regresado al área con observaciones."]);
     }
 
-    public function cancelar(Request $request, TramiteServicio $tramite): JsonResponse
+    public function cancelar(Request $request, TramiteServicio $tramite, GeneradorTramiteServicio $generador): JsonResponse
     {
         $this->autorizar($tramite);
-        if (! in_array($tramite->estado, ['captura', 'rechazado', 'por_validar'], true)) {
+        if ($tramite->estado === 'validado' && ! $tramite->esFondo()) {
             return $this->error('Ya validado no se cancela aquí: se cancela su CLC y su requisición.');
         }
-        $validated = $request->validate(['motivo' => 'required|string|min:5|max:1000']);
-        $tramite->update(['estado' => 'cancelado', 'observaciones' => 'Cancelado: '.trim($validated['motivo'])]);
+        if (! $this->puedeCancelar($tramite, $request->user())) {
+            return $this->error($tramite->estado === 'cancelado' ? 'Ya está cancelado.' : 'No puedes cancelarlo en el estado en que está.');
+        }
+        $validated = $request->validate(['motivo' => 'required|string|min:5|max:1000'],
+            ['motivo.required' => 'Indica el motivo de la cancelación.', 'motivo.min' => 'El motivo debe tener al menos 5 caracteres.']);
+        $cancelado = $generador->cancelar($tramite, $request->user(), trim($validated['motivo']));
 
-        return response()->json(['message' => "{$tramite->folio_completo} cancelado."]);
+        return response()->json(['message' => "Cancelado: {$cancelado}. Sus facturas quedan libres para usarse en otro trámite."]);
+    }
+
+    /**
+     * Antes de validarlo lo cancela quien captura o quien valida. Un fondo validado lo cancela quien valida (o un
+     * administrador), y con él su CLC y su requisición.
+     */
+    private function puedeCancelar(TramiteServicio $tramite, $user): bool
+    {
+        if (in_array($tramite->estado, ['captura', 'rechazado', 'por_validar'], true)) {
+            return $user->can($tramite->permiso('create')) || $user->can($tramite->permiso('validar'));
+        }
+
+        return $tramite->estado === 'validado' && $tramite->esFondo()
+            && ($user->can($tramite->permiso('validar')) || $user->hasRole(['Super Admin', 'Admin']));
     }
 
     // ----------------------------------------------------------------

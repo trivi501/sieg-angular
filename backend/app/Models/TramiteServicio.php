@@ -167,6 +167,12 @@ class TramiteServicio extends Model
         return mb_strtoupper(trim($this->trabajador_nombre)).($this->trabajador_numero ? ' (NO. EMPLEADO '.trim($this->trabajador_numero).')' : '');
     }
 
+    /** Al cancelarlo: sus facturas se conservan como historial, pero se pueden volver a usar en otro trámite. */
+    public function liberarFacturas(): void
+    {
+        $this->facturas()->reorder()->update(['uuid_activo' => null]);
+    }
+
     public function editable(): bool
     {
         return in_array($this->estado, self::EDITABLES, true);

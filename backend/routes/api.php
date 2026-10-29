@@ -182,6 +182,8 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::post('{tramite}/facturas', [TramiteServicioController::class, 'subirFactura'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-create");
             Route::put('{tramite}/facturas/{factura}', [TramiteServicioController::class, 'clasificarFactura'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-create");
             Route::delete('{tramite}/facturas/{factura}', [TramiteServicioController::class, 'quitarFactura'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-create");
+            Route::post('{tramite}/facturas/{factura}/xml', [TramiteServicioController::class, 'sustituirXml'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-create");
+            Route::post('{tramite}/facturas/{factura}/revisar', [TramiteServicioController::class, 'revisarFactura'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-validar");
             Route::get('{tramite}/facturas/{factura}/xml', [TramiteServicioController::class, 'descargarXml'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-index");
             Route::post('{tramite}/facturas/{factura}/pdf', [TramiteServicioController::class, 'subirPdf'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-create");
             Route::get('{tramite}/facturas/{factura}/pdf', [TramiteServicioController::class, 'descargarPdf'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-index");

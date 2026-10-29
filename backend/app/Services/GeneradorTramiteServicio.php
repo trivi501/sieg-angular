@@ -54,6 +54,11 @@ class GeneradorTramiteServicio
                 // Fondo revolvente: sin orden de compra; el registro que guarda la CLC va a favor del trabajador.
                 $orden = $this->registroFondo($tramite, $requisicion, $facturas, $user);
                 app(OrdenCompraController::class)->crearClc($orden, " (fondo revolvente {$tramite->folio_completo}; un renglón por factura y partida)");
+                // La validó Control Presupuestal factura por factura: la CLC llega directo a su bandeja, sin pasar por
+                // Recursos Materiales.
+                $orden->refresh()->update(['clc_estado' => 'recibida_cp']);
+                app(TramiteClc::class)->movimiento($orden, 'recibir_cp', 'generada', 'recibida_cp', null,
+                    "Fondo revolvente {$tramite->folio_completo} validado por Control Presupuestal (factura por factura).", $user);
             } else {
                 $orden = $this->orden($tramite, $requisicion, $facturas, $proveedor, $user);
                 app(OrdenCompraController::class)->crearClc($orden, " (".mb_strtolower($tramite->nombreTipo())." {$tramite->folio_completo}; un renglón por factura)");
@@ -63,6 +68,44 @@ class GeneradorTramiteServicio
                 'id_tb_egreso_requisicion' => $requisicion->id_tb_egreso_requisicion, 'observaciones' => null]);
 
             return $requisicion->fresh();
+        });
+    }
+
+    /**
+     * Cancela todo el trámite de una vez: si ya estaba validado, su CLC (si el usuario puede en el paso en que va),
+     * el registro u orden que la guarda y la requisición (el presupuesto comprometido se libera). Las facturas se
+     * conservan como historial y se pueden volver a usar.
+     */
+    public function cancelar(TramiteServicio $tramite, User $user, string $motivo): string
+    {
+        return DB::transaction(function () use ($tramite, $user, $motivo) {
+            $tramite = TramiteServicio::whereKey($tramite->id)->lockForUpdate()->first();
+            $cancelado = [$tramite->folio_completo];
+            if ($tramite->estado === 'validado') {
+                $orden = OrdenCompra::where('tramite_servicio_id', $tramite->id)->first();
+                if ($orden?->clcActiva()) {
+                    if ($impedimento = TramiteClc::impedimentoParaCancelar($orden, $user)) {
+                        throw ValidationException::withMessages(['tramite' => "No se puede cancelar su CLC {$orden->clc_folio_completo}: {$impedimento}"]);
+                    }
+                    app(TramiteClc::class)->cancelar($orden, $user, $motivo);
+                    $cancelado[] = "CLC {$orden->clc_folio_completo}";
+                }
+                if ($orden && ! $orden->cancelada_at) {
+                    $orden->update(['cancelada_at' => now(), 'cancelada_user_id' => $user->id, 'motivo_cancelacion' => $motivo]);
+                    $cancelado[] = ($orden->sin_factura ? 'registro de la CLC ' : 'orden de compra ').$orden->folio_completo;
+                }
+                $requisicion = $tramite->requisicion;
+                if ($requisicion && (int) $requisicion->id_cat_egreso_requisicion_estado !== EgresoRequisicion::CANCELADA) {
+                    $requisicion->update(['cancelada_at' => now(), 'cancelada_user_id' => $user->id, 'motivo_cancelacion' => $motivo]);
+                    $this->bitacora($requisicion, EgresoRequisicion::CANCELADA,
+                        "Requisición cancelada con el {$tramite->nombreTipo()} {$tramite->folio_completo} por {$user->name}. Motivo: {$motivo}");
+                    $cancelado[] = "requisición {$requisicion->folio_completo}";
+                }
+            }
+            $tramite->update(['estado' => 'cancelado', 'observaciones' => 'Cancelado: '.$motivo]);
+            $tramite->liberarFacturas();
+
+            return implode(', ', $cancelado);
         });
     }
 

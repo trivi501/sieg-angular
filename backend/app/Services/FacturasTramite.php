@@ -190,6 +190,8 @@ class FacturasTramite
         $factura = $tramite->facturas()->create([
             'xml_path' => $ruta,
             'uuid' => $cfdi['uuid'],
+            // Único mientras el trámite esté vigente; al cancelarlo se vacía y la factura se puede volver a usar.
+            'uuid_activo' => $cfdi['uuid'],
             'rfc_emisor' => $cfdi['rfc_emisor'],
             'nombre_emisor' => $cfdi['nombre_emisor'],
             'rfc_receptor' => $cfdi['rfc_receptor'],
@@ -231,7 +233,7 @@ class FacturasTramite
     private function duplicidades(string $uuid): array
     {
         $errores = [];
-        $otro = TramiteServicioFactura::with('tramite:id,folio_completo,estado')->where('uuid', $uuid)->first();
+        $otro = TramiteServicioFactura::with('tramite:id,folio_completo,estado')->where('uuid_activo', $uuid)->first();
         if ($otro) {
             $errores[] = "La factura {$uuid} ya está en {$otro->tramite?->folio_completo}.";
         }

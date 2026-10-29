@@ -1038,6 +1038,11 @@ class RequisicionController extends Controller
                 'motivo_cancelacion' => $validated['motivo'],
             ]);
             $this->bitacora($requisicion, $anterior, EgresoRequisicion::CANCELADA, "Requisición cancelada por {$user->name}. Motivo: {$validated['motivo']}");
+            // Generada por un trámite (servicios, fondo, bitácora, contrato): se cancela y sus facturas quedan libres.
+            foreach (\App\Models\TramiteServicio::where('id_tb_egreso_requisicion', $requisicion->id_tb_egreso_requisicion)->where('estado', '!=', 'cancelado')->get() as $tramite) {
+                $tramite->update(['estado' => 'cancelado', 'observaciones' => "Cancelado con la requisición {$requisicion->folio_completo}: {$validated['motivo']}"]);
+                $tramite->liberarFacturas();
+            }
         });
 
         return response()->json(['message' => "Requisición {$requisicion->folio_completo} cancelada."]);

@@ -42,8 +42,9 @@ class RolesSistemaSeeder extends Seeder
         'Contabilidad' => ['contabilidad-isr'],
         // Importa la nómina de Nomipac y captura finiquitos y laudos (capítulo 1000).
         'Recursos Humanos' => ['nomina-index', 'nomina-create', 'presupuesto-capitulo-1000'],
-        // Valida la nómina, los finiquitos y laudos; al validar se generan las CLC.
-        'Control Presupuestal' => ['nomina-index', 'nomina-validar', 'presupuesto-capitulo-1000'],
+        // Valida la nómina, los finiquitos y laudos y los fondos revolventes (factura por factura); al validar se
+        // generan las CLC.
+        'Control Presupuestal' => ['nomina-index', 'nomina-validar', 'presupuesto-capitulo-1000', 'fondos-index', 'fondos-validar'],
     ];
 
     public function run(): void

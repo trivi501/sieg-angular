@@ -13,9 +13,10 @@ class TramiteServicioFactura extends Model
     protected $table = 'tramite_servicio_facturas';
 
     protected $fillable = [
-        'tramite_servicio_id', 'xml_path', 'pdf_path', 'uuid', 'rfc_emisor', 'nombre_emisor', 'rfc_receptor', 'serie', 'folio', 'fecha',
+        'tramite_servicio_id', 'xml_path', 'pdf_path', 'uuid', 'uuid_activo', 'rfc_emisor', 'nombre_emisor', 'rfc_receptor', 'serie', 'folio', 'fecha',
         'subtotal', 'descuento', 'iva', 'ieps', 'isr', 'total', 'conceptos', 'sat_estado', 'sat_verificado_at',
         'fuente', 'proyecto', 'partida', 'concepto', 'tipo_gasto', 'comision',
+        'revision', 'revision_observaciones', 'revisada_at', 'revisada_user_id',
     ];
 
     protected $hidden = ['xml_path', 'pdf_path'];
@@ -32,12 +33,29 @@ class TramiteServicioFactura extends Model
             'total' => 'float',
             'conceptos' => 'array',
             'sat_verificado_at' => 'datetime',
+            'revisada_at' => 'datetime',
         ];
     }
+
+    /** Fondo revolvente: revisión de Control Presupuestal de cada factura (null: pendiente de revisar). */
+    public const REVISIONES = ['validada' => 'Validada', 'rechazada' => 'No validada'];
 
     public function tramite()
     {
         return $this->belongsTo(TramiteServicio::class, 'tramite_servicio_id');
+    }
+
+    public function revisor()
+    {
+        return $this->belongsTo(User::class, 'revisada_user_id');
+    }
+
+    /** Al corregirla el área (reclasificarla o cambiar su PDF), vuelve a quedar pendiente de revisar. */
+    public function reiniciarRevision(): void
+    {
+        if ($this->revision !== null) {
+            $this->update(['revision' => null, 'revision_observaciones' => null, 'revisada_at' => null, 'revisada_user_id' => null]);
+        }
     }
 
     /**
