@@ -13,6 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Password;
 use Spatie\Permission\Models\Role;
 
 /** Usuarios (SIEG: Settings\UserController), respondiendo JSON en vez de páginas Inertia. */
@@ -72,12 +73,18 @@ class UserController extends Controller
         ]);
     }
 
+    /** Contraseñas: al menos 10 caracteres, con mayúsculas, minúsculas y números. */
+    public static function reglaContrasena(): Password
+    {
+        return Password::min(10)->mixedCase()->numbers();
+    }
+
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|email|max:255|unique:users,email',
-            'password' => 'required|string|min:8',
+            'password' => ['required', 'string', self::reglaContrasena()],
             'roles' => 'nullable|array',
             'roles.*' => 'exists:roles,id',
             ...$this->reglasAdscripcion(),
@@ -107,7 +114,7 @@ class UserController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'email' => ['required', 'email', 'max:255', Rule::unique('users')->ignore($user->id)],
-            'password' => 'nullable|string|min:8',
+            'password' => ['nullable', 'string', self::reglaContrasena()],
             'roles' => 'nullable|array',
             'roles.*' => 'exists:roles,id',
             ...$this->reglasAdscripcion(),
@@ -126,6 +133,8 @@ class UserController extends Controller
 
         if (! empty($validated['password'])) {
             $user->update(['password' => Hash::make($validated['password'])]);
+            // Con la contraseña nueva, sus sesiones abiertas se cierran (salvo la de quien la cambia, si es él mismo).
+            $user->tokens()->when($user->is($request->user()), fn ($q) => $q->whereKeyNot($request->user()->currentAccessToken()?->id))->delete();
         }
 
         if (isset($validated['roles'])) {

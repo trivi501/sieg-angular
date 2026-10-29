@@ -27,7 +27,8 @@ use App\Http\Middleware\PermisoCatalogo;
 use Illuminate\Support\Facades\Route;
 
 // Cada ruta exige su permiso, igual que en routes/settings.php de SIEG.
-Route::post('login', [AuthController::class, 'login']);
+// Además de los 5 intentos por correo e IP de AuthController, 20 por minuto por IP (varios correos desde un mismo equipo).
+Route::post('login', [AuthController::class, 'login'])->middleware('throttle:20,1');
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('me', [AuthController::class, 'me']);

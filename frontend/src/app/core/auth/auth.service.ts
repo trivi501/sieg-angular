@@ -13,7 +13,12 @@ export interface Usuario {
   unidad: string | null;
   roles: string[];
   permissions: string[];
+  /** Minutos sin actividad tras los que se cierra la sesión. */
+  inactividad_minutos?: number;
 }
+
+/** Por qué se cerró la sesión sin que el usuario lo pidiera (se explica en el login). */
+export type MotivoSalida = 'inactividad' | 'vencida';
 
 const TOKEN_KEY = 'sieg_token';
 
@@ -73,10 +78,21 @@ export class AuthService {
       .subscribe(() => this.salir());
   }
 
-  /** Sesión vencida o cerrada: limpia y manda al login. */
-  salir(): void {
+  /** Sesión vencida o cerrada: limpia y manda al login (con el motivo, si no la cerró el usuario). */
+  salir(motivo?: MotivoSalida): void {
+    const volver = motivo ? this.router.url : null;
     this.limpiar();
-    this.router.navigate(['/login']);
+    this.router.navigate(['/login'], { queryParams: motivo ? { motivo, ...(volver && volver !== '/login' ? { volver } : {}) } : {} });
+  }
+
+  /** Inactividad: se borra el token en el servidor (si aún sirve) y se va al login con el aviso. */
+  cerrarPorInactividad(): void {
+    if (!this.user()) return;
+    this.http
+      .post(`${environment.apiUrl}/logout`, {})
+      .pipe(catchError(() => of(null)))
+      .subscribe();
+    this.salir('inactividad');
   }
 
   /** Acepta un permiso o varios (basta con tener uno). `*` es comodín: `catalogos-*-index`. */

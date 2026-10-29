@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Auditoria;
 use App\Models\User;
+use App\Support\Inactividad;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -14,7 +15,8 @@ use Illuminate\Validation\ValidationException;
 
 /**
  * Login con token de Sanctum (Bearer). Equivale a Fortify en SIEG: login por correo en minúsculas,
- * 5 intentos por minuto por correo e IP, y cada acceso queda en la bitácora de auditoría.
+ * 5 intentos por minuto por correo e IP (y 20 por IP en la ruta), y cada acceso queda en la bitácora de auditoría.
+ * La sesión se cierra tras 30 minutos sin actividad (App\Support\Inactividad).
  */
 class AuthController extends Controller
 {
@@ -46,8 +48,13 @@ class AuthController extends Controller
         RateLimiter::clear($clave);
         Auditoria::acceso('inicio de sesión', $user);
 
+        // Sus sesiones anteriores ya vencidas por inactividad se borran; la nueva empieza con actividad.
+        $user->tokens()->get()->filter(fn ($t) => Inactividad::vencido($t))->each->delete();
+        $nuevo = $user->createToken('angular');
+        $nuevo->accessToken->forceFill(['actividad_at' => now()])->save();
+
         return response()->json([
-            'token' => $user->createToken('angular')->plainTextToken,
+            'token' => $nuevo->plainTextToken,
             'user' => $this->perfil($user),
         ]);
     }
@@ -78,6 +85,8 @@ class AuthController extends Controller
             'unidad' => $user->unidadAdministrativa?->nombre,
             'roles' => $user->roles->pluck('name'),
             'permissions' => $user->getAllPermissions()->pluck('name')->values(),
+            // Minutos sin actividad tras los que se cierra la sesión (Angular avisa antes).
+            'inactividad_minutos' => Inactividad::minutos(),
         ];
     }
 }

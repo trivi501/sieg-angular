@@ -74,6 +74,11 @@ git checkout main
 git pull --ff-only origin main
 cd backend
 
+echo "▶ Revisión de seguridad del .env"
+# En producción nunca con APP_DEBUG=true: cualquier error mostraría rutas del servidor y el detalle del código.
+grep -qE "^APP_DEBUG=(false|0)\s*$" .env || { echo "backend/.env debe tener APP_DEBUG=false. No se despliega."; exit 1; }
+grep -qE "^APP_ENV=production\s*$" .env || { echo "backend/.env debe tener APP_ENV=production. No se despliega."; exit 1; }
+
 echo "▶ Mantenimiento"
 ${PHP} artisan down --retry=60
 trap 'echo "Falló: el sitio vuelve a estar arriba. Respaldo de la base: \${RESPALDO}"; ${PHP} artisan up' ERR

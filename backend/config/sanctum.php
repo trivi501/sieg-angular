@@ -52,6 +52,9 @@ return [
 
     'expiration' => null,
 
+    // Minutos sin actividad del usuario tras los que se cierra la sesión (App\Support\Inactividad).
+    'inactividad' => (int) env('SANCTUM_INACTIVIDAD', 30),
+
     /*
     |--------------------------------------------------------------------------
     | Token Prefix

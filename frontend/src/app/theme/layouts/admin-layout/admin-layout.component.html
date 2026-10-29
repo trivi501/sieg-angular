@@ -3,6 +3,8 @@
     'mob-open': navCollapsedMob
   }" (NavCollapse)="closeMenu()" />
 <app-nav-bar (NavCollapsedMob)="navMobClick()" (NavCollapse)="handleNavCollapse()" />
+<!-- Cierre de sesión por inactividad: avisa dos minutos antes -->
+<app-inactividad />
 <div class="pc-container">
   <div class="coded-wrapper">
     <div class="coded-content">

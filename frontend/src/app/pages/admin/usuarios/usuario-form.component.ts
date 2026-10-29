@@ -26,7 +26,7 @@ export class UsuarioFormComponent {
     cargo: [''],
     email: ['', [Validators.required, Validators.email]],
     // En la edición la contraseña es opcional: vacía no se cambia.
-    password: ['', this.id ? [Validators.minLength(8)] : [Validators.required, Validators.minLength(8)]],
+    password: ['', this.id ? [Validators.minLength(10)] : [Validators.required, Validators.minLength(10)]],
     pertenece: ['secretaria' as 'secretaria' | 'regidor'],
     id_cat_egreso_unidad_administrativa: [null as number | null],
     regidor_id: [null as number | null],

@@ -4,6 +4,7 @@ import { HttpClient, HttpContext, HttpParams } from '@angular/common/http';
 import { environment } from 'src/environments/environment';
 import { Paginado } from 'src/app/core/api';
 import { SIN_LOADER } from 'src/app/core/loading.service';
+import { SEGUNDO_PLANO } from 'src/app/core/auth/auth.interceptor';
 
 export interface Ticket {
   id: number;
@@ -78,9 +79,9 @@ export class TicketsService {
   }
 
   notificaciones() {
-    // Se consulta cada minuto en segundo plano: sin loader.
+    // Se consulta cada minuto en segundo plano: sin loader y sin contar como actividad (cierre por inactividad).
     return this.http.get<{ unread: Notificacion[]; count: number }>(`${this.api}/notifications`, {
-      context: new HttpContext().set(SIN_LOADER, true)
+      context: new HttpContext().set(SIN_LOADER, true).set(SEGUNDO_PLANO, true)
     });
   }
 

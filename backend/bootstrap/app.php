@@ -18,7 +18,13 @@ return Application::configure(basePath: dirname(__DIR__))
             'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
             'catalogo' => \App\Http\Middleware\PermisoCatalogo::class,
         ]);
-        $middleware->api(append: [\App\Http\Middleware\ComprimirJson::class]);
+        $middleware->api(append: [
+            \App\Http\Middleware\CabecerasSeguridad::class,
+            \App\Http\Middleware\RegistrarActividad::class,
+            \App\Http\Middleware\ComprimirJson::class,
+        ]);
+        // La API no redirige a un login (no hay ruta "login"): sin sesión responde 401 en JSON.
+        $middleware->redirectGuestsTo(fn (Request $request) => $request->is('api/*') ? null : '/login');
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

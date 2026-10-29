@@ -25,6 +25,8 @@ export class AuthLoginComponent {
 
   enviando = signal(false);
   error = signal('');
+  /** Por qué se cerró la sesión (inactividad o token vencido), para avisarlo. */
+  readonly motivo = this.route.snapshot.queryParamMap.get('motivo');
 
   entrar(): void {
     if (this.form.invalid) {
