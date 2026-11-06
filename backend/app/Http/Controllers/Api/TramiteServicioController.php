@@ -110,7 +110,7 @@ class TramiteServicioController extends Controller
         $this->autorizar($tramite);
         $user = $request->user();
         $fondo = $tramite->esFondo();
-        $tramite->load('facturas.revisor:id,name', 'unidadAdministrativa', 'usuario:id,name', 'validador:id,name', 'requisicion:id_tb_egreso_requisicion,folio_completo', 'ordenCompra');
+        $tramite->load('facturas.revisor:id,name', 'unidadAdministrativa', 'usuario:id,name', 'validador:id,name', 'revisorSuficiencia:id,name', 'requisicion:id_tb_egreso_requisicion,folio_completo', 'ordenCompra');
         $clave = trim((string) $tramite->unidadAdministrativa?->clave);
         $nombres = PresupuestoEgreso::where('CLAVE', $clave)->get(['PARTIDA', 'NOMBRE_PARTIDA'])
             ->mapWithKeys(fn ($p) => [trim((string) $p->PARTIDA) => trim((string) $p->NOMBRE_PARTIDA)]);
@@ -150,6 +150,14 @@ class TramiteServicioController extends Controller
                 'isr' => round($tramite->facturas->sum('isr'), 2),
                 'requisicion_id' => $tramite->id_tb_egreso_requisicion,
                 'requisicion' => $tramite->requisicion?->folio_completo,
+                // Servicios y combustible: resultado de la revisión de suficiencia (primer paso de la validación).
+                'suficiencia' => $tramite->requiereSuficienciaPrevia() && $tramite->suficiencia_at ? [
+                    'suficiente' => $tramite->suficiencia,
+                    'revisada_at' => $tramite->suficiencia_at->toIso8601String(),
+                    'revisada_por' => $tramite->revisorSuficiencia?->name,
+                    'total' => $tramite->suficiencia_detalle['total'] ?? null,
+                    'partidas' => $tramite->suficiencia_detalle['partidas'] ?? [],
+                ] : null,
                 'orden' => $oc ? ['id' => $oc->id, 'folio' => $oc->folio_completo, 'clc' => $oc->clc_folio_completo, 'clc_estado' => $oc->clc_folio_completo ? \App\Services\TramiteClc::descripcion($oc->clc_estado) : null] : null,
             ],
             'facturas' => $tramite->facturas->map(fn (TramiteServicioFactura $f) => [
@@ -199,7 +207,10 @@ class TramiteServicioController extends Controller
             'puede' => [
                 'editar' => $editable,
                 'enviar' => $editable,
-                'validar' => $tramite->estado === 'por_validar' && $user->can($tramite->permiso('validar')),
+                // Servicios y combustible: primero la suficiencia; con suficiencia, generar (validar).
+                'suficiencia' => $tramite->requiereSuficienciaPrevia() && $tramite->estado === 'por_validar' && $user->can($tramite->permiso('validar')),
+                'validar' => $tramite->estado === 'por_validar' && $user->can($tramite->permiso('validar'))
+                    && (! $tramite->requiereSuficienciaPrevia() || $tramite->suficiencia === true),
                 // Fondo: Control Presupuestal valida o no cada factura antes de validar el fondo.
                 'revisar' => $fondo && $tramite->estado === 'por_validar' && $user->can($tramite->permiso('validar')),
                 'cancelar' => $this->puedeCancelar($tramite, $user),
@@ -454,7 +465,9 @@ class TramiteServicioController extends Controller
             return $this->error($impedimento);
         }
 
-        $tramite->update(['estado' => 'por_validar', 'enviado_at' => now(), 'observaciones' => $fondo ? null : $tramite->observaciones]);
+        // Cada envío se revisa de nuevo: la suficiencia anterior ya no cuenta.
+        $tramite->update(['estado' => 'por_validar', 'enviado_at' => now(), 'observaciones' => $fondo ? null : $tramite->observaciones,
+            'suficiencia' => null, 'suficiencia_detalle' => null, 'suficiencia_at' => null, 'suficiencia_user_id' => null]);
 
         return response()->json(['message' => $fondo
             ? "{$tramite->folio_completo} enviado a Control Presupuestal: revisa cada factura y lo valida."
@@ -483,6 +496,24 @@ class TramiteServicioController extends Controller
                 ? "Fondo revolvente validado: requisición {$requisicion->folio_completo} y CLC {$orden?->clc_folio_completo} a favor de {$tramite->trabajador_nombre}; la CLC ya está recibida en Control Presupuestal. Ya se pueden imprimir."
                 : ($tramite->esCombustible() ? 'Bitácora de combustible validada' : 'Trámite validado').": requisición {$requisicion->folio_completo}, orden de compra {$orden?->folio_completo} y CLC {$orden?->clc_folio_completo} generadas. Ya se pueden imprimir.",
         ]);
+    }
+
+    /**
+     * Servicios y combustible, primer paso: revisa la suficiencia presupuestal de las facturas sin generar nada. Se
+     * puede repetir (p. ej. tras una modificación presupuestal).
+     */
+    public function suficiencia(Request $request, TramiteServicio $tramite, GeneradorTramiteServicio $generador): JsonResponse
+    {
+        $this->autorizar($tramite);
+        abort_unless($request->user()->can($tramite->permiso('validar')), 403);
+        abort_unless($tramite->requiereSuficienciaPrevia(), 404);
+        $r = $generador->revisarSuficiencia($tramite, $request->user());
+        $faltan = collect($r['partidas'])->where('suficiente', false)
+            ->map(fn ($p) => "{$p['partida']} (proy. {$p['proyecto']}, fte. {$p['fuente']}): faltan $".number_format($p['faltante'], 2))->implode('; ');
+
+        return response()->json(['suficiente' => $r['suficiente'], 'message' => $r['suficiente']
+            ? 'Con suficiencia presupuestal por $'.number_format($r['total'], 2).'. Ya puedes generar la requisición, la orden de compra y la CLC.'
+            : "Sin suficiencia presupuestal: {$faltan}. Se requiere una modificación presupuestal; después vuelve a validar la suficiencia."]);
     }
 
     /** No lo valida: regresa al área con las observaciones para que lo corrija. */

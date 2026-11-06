@@ -132,13 +132,24 @@ class PresupuestoService
         $requisicion->loadMissing('tbEgresoRequisicionDetalles', 'catEgresoUnidadAdministrativa');
         $unidadClave = (string) $requisicion->catEgresoUnidadAdministrativa?->clave;
 
-        $lineas = $this->lineas([$unidadClave], $requisicion->id_tb_egreso_requisicion)->keyBy('clave');
-
         $requerido = [];
         foreach ($requisicion->tbEgresoRequisicionDetalles as $d) {
             $clave = self::clave($unidadClave, $d->fuente, $d->proyecto, $d->partida);
             $requerido[$clave] = ($requerido[$clave] ?? 0) + (float) ($d->total ?? $d->sub_total ?? 0);
         }
+
+        return $this->suficiencia($unidadClave, $requerido, $requisicion->id_tb_egreso_requisicion, $requisicion->suficiencia === true);
+    }
+
+    /**
+     * Suficiencia de unos montos contra el disponible de la secretaría, sin requisición todavía (p. ej. un trámite de
+     * servicios antes de generarla). $requerido: [clave de línea => monto].
+     *
+     * @param  array<string, float>  $requerido
+     */
+    public function suficiencia(string $unidadClave, array $requerido, ?int $excluirRequisicion = null, bool $yaComprometido = false): array
+    {
+        $lineas = $this->lineas([$unidadClave], $excluirRequisicion)->keyBy('clave');
 
         $partidas = [];
         $suficiente = $requerido !== [];
@@ -148,7 +159,7 @@ class PresupuestoService
             $ok = $linea !== null && round($monto, 2) <= $linea['disponible'];
             $suficiente = $suficiente && $ok;
             // Ya con suficiencia, su propio importe se muestra comprometido y descontado del disponible.
-            $propio = $requisicion->suficiencia === true ? $monto : 0.0;
+            $propio = $yaComprometido ? $monto : 0.0;
 
             $partidas[] = [
                 'clave' => $clave,

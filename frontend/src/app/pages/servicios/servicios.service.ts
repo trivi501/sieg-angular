@@ -92,6 +92,28 @@ export interface FacturaTramite {
 
 export type RevisionFactura = 'validada' | 'rechazada';
 
+/** suficiencia: primer paso de la validación (servicios y combustible); validar genera los documentos. */
+export type AccionTramite = 'enviar' | 'suficiencia' | 'validar' | 'rechazar' | 'cancelar';
+
+export interface SuficienciaTramite {
+  suficiente: boolean;
+  revisada_at: string;
+  revisada_por: string | null;
+  total: number | null;
+  partidas: {
+    clave: string;
+    fuente: string;
+    proyecto: string;
+    partida: string;
+    nombre_partida: string | null;
+    existe: boolean;
+    requerido: number;
+    disponible: number;
+    faltante: number;
+    suficiente: boolean;
+  }[];
+}
+
 export interface LineaTramite {
   fuente: string;
   nombre_fuente: string | null;
@@ -132,6 +154,8 @@ export interface DetalleTramite {
     isr: number;
     requisicion_id: number | null;
     requisicion: string | null;
+    /** Servicios y combustible: revisión de suficiencia presupuestal (primer paso de la validación); null sin revisar. */
+    suficiencia: SuficienciaTramite | null;
     orden: { id: number; folio: string; clc: string | null; clc_estado: string | null } | null;
   };
   facturas: FacturaTramite[];
@@ -141,7 +165,8 @@ export interface DetalleTramite {
   lineas: LineaTramite[];
   /** revisar: fondo enviado a validar; Control Presupuestal valida o no cada factura. */
   /** cancelar_todo: fondo validado; al cancelarlo se cancelan también su CLC y su requisición. */
-  puede: { editar: boolean; enviar: boolean; validar: boolean; revisar: boolean; cancelar: boolean; cancelar_todo: boolean; documentos: boolean };
+  /** suficiencia: revisar la suficiencia (servicios y combustible); validar: generar requisición, OC y CLC (ya con suficiencia). */
+  puede: { editar: boolean; enviar: boolean; suficiencia: boolean; validar: boolean; revisar: boolean; cancelar: boolean; cancelar_todo: boolean; documentos: boolean };
   /** Solo en una bitácora de combustible: sus facturas del Excel del proveedor y sus tickets. */
   combustible: ResumenCombustible | null;
 }
@@ -219,7 +244,7 @@ export class ServiciosService {
     return this.http.get(`${this.api(tipo)}/${id}/facturas/${factura}/pdf`, { responseType: 'blob' });
   }
 
-  accion(tipo: TipoTramite, id: number, accion: 'enviar' | 'validar' | 'rechazar' | 'cancelar', datos: object = {}) {
+  accion(tipo: TipoTramite, id: number, accion: AccionTramite, datos: object = {}) {
     return this.http.post<Mensaje>(`${this.api(tipo)}/${id}/${accion}`, datos);
   }
 }

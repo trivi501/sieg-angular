@@ -14,6 +14,7 @@ import { RequisicionesService, abrirBlob } from '../requisiciones/requisiciones.
 import { AccionComponent } from 'src/app/shared/accion.component';
 import { SelectBusquedaDirective } from 'src/app/shared/select-busqueda.directive';
 import {
+  AccionTramite,
   DetalleTramite,
   FacturaTramite,
   LineaTramite,
@@ -442,9 +443,9 @@ export class ServicioDetalleComponent {
 
   // --- Trámite ---
 
-  ejecutar(accion: 'enviar' | 'validar' | 'rechazar' | 'cancelar'): void {
-    const genera = this.fondo ? 'la requisición (con su suficiencia) y la CLC a favor del trabajador' : 'la requisición (con su suficiencia), la orden de compra y la CLC';
-    if (accion === 'validar' && !confirm(`Al validarlo se generan ${genera}. ¿Validar?`)) return;
+  ejecutar(accion: AccionTramite): void {
+    const genera = this.fondo ? 'la requisición (con su suficiencia) y la CLC a favor del trabajador' : 'la requisición, la orden de compra y la CLC';
+    if (accion === 'validar' && !confirm(this.fondo ? `Al validarlo se generan ${genera}. ¿Validar?` : `Se generan ${genera}. ¿Generar?`)) return;
     const datos = accion === 'rechazar' ? { observaciones: this.observaciones } : accion === 'cancelar' ? { motivo: this.motivo } : {};
     this.ocupado.set(true);
     this.servicio.accion(this.tipo, this.id, accion, datos).subscribe({

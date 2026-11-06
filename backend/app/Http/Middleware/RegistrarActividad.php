@@ -19,7 +19,8 @@ class RegistrarActividad
         $response = $next($request);
 
         $token = $request->user()?->currentAccessToken();
-        if ($token instanceof PersonalAccessToken && ! $request->hasHeader(Inactividad::CABECERA_SEGUNDO_PLANO)) {
+        // Solo tokens guardados (Sanctum::actingAs en pruebas usa uno de mentira).
+        if ($token instanceof PersonalAccessToken && $token->exists === true && ! $request->hasHeader(Inactividad::CABECERA_SEGUNDO_PLANO)) {
             Inactividad::renovar($token);
         }
 

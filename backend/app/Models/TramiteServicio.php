@@ -57,11 +57,12 @@ class TramiteServicio extends Model
         'tipo', 'combustible_lote_id', 'contrato_id', 'trabajador_nombre', 'trabajador_numero', 'trabajador_puesto',
         'folio', 'año', 'folio_completo', 'id_cat_egreso_unidad_administrativa', 'concepto', 'proveedor_rfc', 'proveedor_nombre',
         'estado', 'observaciones', 'user_id', 'enviado_at', 'validado_at', 'validado_user_id', 'id_tb_egreso_requisicion',
+        'suficiencia', 'suficiencia_detalle', 'suficiencia_at', 'suficiencia_user_id',
     ];
 
     protected function casts(): array
     {
-        return ['enviado_at' => 'datetime', 'validado_at' => 'datetime'];
+        return ['enviado_at' => 'datetime', 'validado_at' => 'datetime', 'suficiencia' => 'boolean', 'suficiencia_detalle' => 'array', 'suficiencia_at' => 'datetime'];
     }
 
     public function facturas()
@@ -109,6 +110,12 @@ class TramiteServicio extends Model
     public function validador()
     {
         return $this->belongsTo(User::class, 'validado_user_id');
+    }
+
+    /** Quien revisó la suficiencia presupuestal (primer paso de la validación). */
+    public function revisorSuficiencia()
+    {
+        return $this->belongsTo(User::class, 'suficiencia_user_id');
     }
 
     /** Proveedor del catálogo con el RFC del emisor de las facturas (null si no está registrado). */
@@ -171,6 +178,15 @@ class TramiteServicio extends Model
     public function liberarFacturas(): void
     {
         $this->facturas()->reorder()->update(['uuid_activo' => null]);
+    }
+
+    /**
+     * Servicios y combustible se validan en dos pasos: suficiencia presupuestal y luego generar requisición, orden y
+     * CLC. El fondo (revisión factura por factura) y la mensualidad de contrato generan en un solo paso.
+     */
+    public function requiereSuficienciaPrevia(): bool
+    {
+        return in_array($this->tipo, ['servicio', 'combustible'], true);
     }
 
     public function editable(): bool

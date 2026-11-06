@@ -189,6 +189,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::post('{tramite}/facturas/{factura}/pdf', [TramiteServicioController::class, 'subirPdf'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-create");
             Route::get('{tramite}/facturas/{factura}/pdf', [TramiteServicioController::class, 'descargarPdf'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-index");
             Route::post('{tramite}/enviar', [TramiteServicioController::class, 'enviar'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-create");
+            Route::post('{tramite}/suficiencia', [TramiteServicioController::class, 'suficiencia'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-validar");
             Route::post('{tramite}/validar', [TramiteServicioController::class, 'validar'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-validar");
             Route::post('{tramite}/rechazar', [TramiteServicioController::class, 'rechazar'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-validar");
             Route::post('{tramite}/cancelar', [TramiteServicioController::class, 'cancelar'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-create|{$prefijo}-validar");

@@ -15,7 +15,30 @@
       @if (d.puede.enviar) {
         <button type="button" class="btn btn-primary" [disabled]="ocupado() || !d.facturas.length" (click)="ejecutar('enviar')" [appAccion]="fondo ? 'Enviar a Control Presupuestal' : 'Enviar a validar'" [conNombre]="fondo" icono="send"></button>
       }
-      @if (d.puede.validar) {
+      @if (d.puede.suficiencia) {
+        <!-- Servicios y combustible: 1) validar suficiencia, 2) con suficiencia, generar requisición, OC y CLC -->
+        <button
+          type="button"
+          class="btn"
+          [class.btn-primary]="!t.suficiencia"
+          [class.btn-outline-primary]="!!t.suficiencia"
+          [disabled]="ocupado()"
+          (click)="ejecutar('suficiencia')"
+          [appAccion]="t.suficiencia ? 'Volver a validar suficiencia' : 'Validar suficiencia'"
+          [conNombre]="true"
+          icono="safety-certificate"
+        ></button>
+        <button
+          type="button"
+          class="btn btn-success"
+          [disabled]="ocupado() || !d.puede.validar"
+          [title]="d.puede.validar ? '' : t.suficiencia ? 'Sin suficiencia presupuestal' : 'Primero valida la suficiencia'"
+          (click)="ejecutar('validar')"
+          appAccion="Generar requisición, OC y CLC"
+          [conNombre]="true"
+          icono="file-done"
+        ></button>
+      } @else if (d.puede.validar) {
         <button
           type="button"
           class="btn btn-success"
@@ -25,6 +48,8 @@
           [appAccion]="fondo ? 'Validar fondo (genera requisición y CLC)' : 'Validar (genera requisición, orden de compra y CLC)'"
           icono="check"
         ></button>
+      }
+      @if (d.puede.validar || d.puede.suficiencia) {
         <button type="button" class="btn btn-outline-danger" (click)="modo.set('rechazar')" appAccion="No validar (con observaciones)" icono="close"></button>
       }
       @if (d.puede.cancelar) {
@@ -38,6 +63,63 @@
       {{ a.texto }}
       <button type="button" class="btn-close" (click)="aviso.set(null)"></button>
     </div>
+  }
+
+  <!-- Suficiencia presupuestal (servicios y combustible): primer paso de la validación -->
+  @if (t.estado === 'por_validar' && (t.suficiencia || d.puede.suficiencia)) {
+    @if (t.suficiencia; as s) {
+      <div class="card" [class.border-success]="s.suficiente" [class.border-danger]="!s.suficiente">
+        <div class="card-body py-2">
+          <div class="d-flex flex-wrap align-items-center gap-2 small mb-1">
+            <span class="badge fs-6" [class.bg-light-success]="s.suficiente" [class.text-success]="s.suficiente" [class.bg-light-danger]="!s.suficiente" [class.text-danger]="!s.suficiente">
+              {{ s.suficiente ? 'Con suficiencia presupuestal' : 'Sin suficiencia presupuestal' }}
+            </span>
+            <span class="text-muted">
+              Revisó {{ s.revisada_por ?? '—' }} el {{ s.revisada_at | date: 'dd/MM/yyyy HH:mm' }}{{ s.total !== null ? ' · requerido ' + money(s.total) : '' }}
+            </span>
+            @if (!s.suficiente) {
+              <span class="text-danger">Se requiere una modificación presupuestal; después vuelve a validar la suficiencia.</span>
+            }
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead>
+                <tr>
+                  <th>Partida</th>
+                  <th>Proyecto</th>
+                  <th>Fuente</th>
+                  <th class="text-end">Requerido</th>
+                  <th class="text-end">Disponible</th>
+                  <th class="text-end">Faltante</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (p of s.partidas; track p.clave) {
+                  <tr [class.table-danger]="!p.suficiente">
+                    <td>{{ p.partida }} {{ p.nombre_partida ? '— ' + p.nombre_partida : '' }}</td>
+                    <td>{{ p.proyecto }}</td>
+                    <td>{{ p.fuente }}</td>
+                    <td class="text-end font-monospace">{{ money(p.requerido) }}</td>
+                    <td class="text-end font-monospace">{{ p.existe ? money(p.disponible) : 'No existe' }}</td>
+                    <td class="text-end font-monospace">{{ p.faltante ? money(p.faltante) : '—' }}</td>
+                    <td>
+                      <span class="badge" [class.bg-light-success]="p.suficiente" [class.text-success]="p.suficiente" [class.bg-light-danger]="!p.suficiente" [class.text-danger]="!p.suficiente">
+                        {{ p.suficiente ? 'Suficiente' : 'Insuficiente' }}
+                      </span>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    } @else {
+      <div class="alert alert-info py-2 small">
+        <b>Paso 1:</b> valida la suficiencia presupuestal. <b>Paso 2:</b> con suficiencia se habilita «Generar requisición, OC y CLC».
+      </div>
+    }
   }
 
   <!-- Observaciones de Recursos Materiales (no validado) -->

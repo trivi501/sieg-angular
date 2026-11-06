@@ -31,6 +31,12 @@ class GeneradorTramiteServicio
             if ($tramite->estado !== 'por_validar') {
                 throw ValidationException::withMessages(['tramite' => 'Solo se valida un trámite enviado a validar.']);
             }
+            // Servicios y combustible: primero se revisa la suficiencia (revisarSuficiencia); se vuelve a comprobar abajo.
+            if ($tramite->requiereSuficienciaPrevia() && $tramite->suficiencia !== true) {
+                throw ValidationException::withMessages(['presupuesto' => $tramite->suficiencia === false
+                    ? 'No tiene suficiencia presupuestal: se requiere una modificación presupuestal (y volver a validar la suficiencia) antes de generar.'
+                    : 'Primero valida la suficiencia presupuestal.']);
+            }
             $facturas = $tramite->facturas()->get();
             $proveedor = $tramite->proveedor();
             if ($impedimento = $tramite->impedimentoProveedor()) {
@@ -69,6 +75,32 @@ class GeneradorTramiteServicio
 
             return $requisicion->fresh();
         });
+    }
+
+    /**
+     * Primer paso de la validación: revisa la suficiencia presupuestal de las facturas (por partida, proyecto y
+     * fuente) sin generar nada y guarda el resultado en el trámite. Con suficiencia se puede generar.
+     */
+    public function revisarSuficiencia(TramiteServicio $tramite, User $user): array
+    {
+        if ($tramite->estado !== 'por_validar') {
+            throw ValidationException::withMessages(['tramite' => 'La suficiencia se revisa cuando el trámite está enviado a validar.']);
+        }
+        $unidad = (string) $tramite->unidadAdministrativa?->clave;
+        $requerido = [];
+        foreach ($this->renglones($tramite, $tramite->facturas()->get()) as $r) {
+            $clave = PresupuestoService::clave($unidad, $r['fuente'] ?? '', $r['proyecto'] ?? '', $r['partida'] ?? '');
+            $requerido[$clave] = ($requerido[$clave] ?? 0) + $r['importe'];
+        }
+        $resultado = $this->presupuesto->suficiencia($unidad, $requerido);
+        $tramite->update([
+            'suficiencia' => $resultado['suficiente'],
+            'suficiencia_detalle' => $resultado,
+            'suficiencia_at' => now(),
+            'suficiencia_user_id' => $user->id,
+        ]);
+
+        return $resultado;
     }
 
     /**
