@@ -38,7 +38,7 @@ class ClcController extends Controller
             ->when(! $todas, fn ($q) => $q->where(fn ($w) => $w
                 ->whereIn('clc_estado', $estadosBandeja ?: ['__ninguno__'])
                 ->orWhereHas('requisicion', fn ($r) => $r->whereIn('id_cat_egreso_unidad_administrativa', $propias ?: [0]))))
-            ->with(['proveedor:id,nombre', 'requisicion:id_tb_egreso_requisicion,folio_completo,id_cat_egreso_unidad_administrativa,observaciones,beneficiario',
+            ->with(['regidor:id,titulo,nombre,cargo', 'proveedor:id,nombre', 'requisicion:id_tb_egreso_requisicion,folio_completo,id_cat_egreso_unidad_administrativa,observaciones,beneficiario',
                 'requisicion.catEgresoUnidadAdministrativa:id_cat_egreso_unidad_administrativa,clave,nombre', 'relacionClc:id,folio_completo,origen,destino',
                 'movimientosClc' => fn ($q) => $q->where('accion', 'devolver')->reorder()->latest('id')])
             ->orderByDesc('clc_generada_at')
@@ -61,6 +61,8 @@ class ClcController extends Controller
                 'unidad' => $o->requisicion?->catEgresoUnidadAdministrativa
                     ? trim($o->requisicion->catEgresoUnidadAdministrativa->clave.' '.$o->requisicion->catEgresoUnidadAdministrativa->nombre)
                     : null,
+                // La subió un regidor o su asistente.
+                'regidor' => $o->nombreRegidor(),
                 'relacion' => $o->relacionClc?->folio_completo,
                 'relacion_id' => $o->clc_relacion_id,
                 'pago_fecha' => $o->pago_fecha?->toDateString(),
@@ -160,7 +162,7 @@ class ClcController extends Controller
                     ->orWhereHas('proveedor', fn ($p) => $p->where('nombre', 'like', $like)->orWhere('rfc', 'like', $like))
                     ->orWhereHas('requisicion', fn ($r) => $r->where('folio_completo', 'like', $like)->orWhere('observaciones', 'like', $like)->orWhere('beneficiario', 'like', $like)));
             })
-            ->with(['proveedor:id,nombre,rfc', 'requisicion:id_tb_egreso_requisicion,folio_completo,id_cat_egreso_unidad_administrativa,observaciones,beneficiario',
+            ->with(['regidor:id,titulo,nombre,cargo', 'proveedor:id,nombre,rfc', 'requisicion:id_tb_egreso_requisicion,folio_completo,id_cat_egreso_unidad_administrativa,observaciones,beneficiario',
                 'requisicion.catEgresoUnidadAdministrativa:id_cat_egreso_unidad_administrativa,clave,nombre', 'requisicion.tbEgresoRequisicionDetalles:id_tb_egreso_requisicion,fuente,partida',
                 'tramiteServicio:id,folio_completo', 'tesoreriaPago:id,numero'])
             ->orderBy('clc_año')->orderBy('clc_folio')->get();
@@ -169,7 +171,8 @@ class ClcController extends Controller
             $o->clc_folio_completo,
             $o->clc_fecha?->format('d/m/Y'),
             TramiteClc::descripcion($o->clc_estado),
-            trim(($o->requisicion?->catEgresoUnidadAdministrativa?->clave ?? '').' '.($o->requisicion?->catEgresoUnidadAdministrativa?->nombre ?? '')),
+            trim(($o->requisicion?->catEgresoUnidadAdministrativa?->clave ?? '').' '.($o->requisicion?->catEgresoUnidadAdministrativa?->nombre ?? ''))
+                .($o->regidor ? ' — '.$o->nombreRegidor() : ''),
             $o->requisicion?->folio_completo,
             $o->folio_completo,
             $o->tramiteServicio?->folio_completo,
@@ -210,7 +213,7 @@ class ClcController extends Controller
     {
         abort_unless(TramiteClc::veTodo($request->user()) || $request->user()->can('clc-sindicatura'), 403);
 
-        $relacion->load(['ordenes.proveedor:id,nombre', 'ordenes.requisicion:id_tb_egreso_requisicion,id_cat_egreso_unidad_administrativa,beneficiario',
+        $relacion->load(['ordenes.regidor:id,titulo,nombre,cargo', 'ordenes.proveedor:id,nombre', 'ordenes.requisicion:id_tb_egreso_requisicion,id_cat_egreso_unidad_administrativa,beneficiario',
             'ordenes.requisicion.catEgresoUnidadAdministrativa:id_cat_egreso_unidad_administrativa,clave,nombre']);
 
         $pdf = Pdf::loadView('clc.relacion', ['relacion' => $relacion, 'areas' => TramiteClc::AREAS])->setPaper('letter');

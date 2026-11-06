@@ -108,7 +108,12 @@
                       <a [routerLink]="['/requisiciones', c.requisicion_id]">{{ c.requisicion }}</a>
                       <small class="d-block text-muted">{{ c.orden }}</small>
                     </td>
-                    <td class="concepto" [title]="c.unidad ?? ''">{{ c.unidad }}</td>
+                    <td class="concepto" [title]="(c.unidad ?? '') + (c.regidor ? ' — ' + c.regidor : '')">
+                    {{ c.unidad }}
+                    @if (c.regidor) {
+                      <span class="d-block small text-primary">{{ c.regidor }}</span>
+                    }
+                  </td>
                     <td class="concepto" [title]="c.proveedor ?? ''">{{ c.proveedor }}</td>
                     <td class="text-end font-monospace">
                       {{ money(c.neto) }}
@@ -169,7 +174,12 @@
                 <tr>
                   <td class="fw-semibold text-nowrap">{{ c.clc }}<small class="d-block text-muted fw-normal">{{ c.clc_fecha | date: 'dd/MM/yyyy' }}</small></td>
                   <td class="text-nowrap"><a [routerLink]="['/requisiciones', c.requisicion_id]">{{ c.requisicion }}</a><small class="d-block text-muted">{{ c.orden }}</small></td>
-                  <td class="concepto" [title]="c.unidad ?? ''">{{ c.unidad }}</td>
+                  <td class="concepto" [title]="(c.unidad ?? '') + (c.regidor ? ' — ' + c.regidor : '')">
+                    {{ c.unidad }}
+                    @if (c.regidor) {
+                      <span class="d-block small text-primary">{{ c.regidor }}</span>
+                    }
+                  </td>
                   <td class="concepto" [title]="c.proveedor ?? ''">{{ c.proveedor }}</td>
                   <td class="text-end font-monospace">{{ money(c.neto) }}</td>
                   <td>

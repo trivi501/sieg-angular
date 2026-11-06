@@ -18,6 +18,8 @@ export interface Clc {
   requisicion: string | null;
   concepto: string | null;
   unidad: string | null;
+  /** La subió un regidor o su asistente: cargo y nombre del regidor. */
+  regidor: string | null;
   relacion: string | null;
   relacion_id: number | null;
   pago_fecha: string | null;

@@ -590,6 +590,8 @@ class OrdenCompraController extends Controller
             'clc_folio_completo' => sprintf('CLC-%d-%04d', $año, $folio),
             'clc_fecha' => now('America/Mexico_City')->toDateString(),
             'clc_user_id' => auth()->id(),
+            // La subió un regidor o su asistente: la CLC lleva el nombre del regidor.
+            'regidor_id' => $ordenCompra->regidorDeOrigen(auth()->user()),
             'clc_generada_at' => now(),
         ]);
 

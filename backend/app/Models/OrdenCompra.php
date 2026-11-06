@@ -18,7 +18,7 @@ class OrdenCompra extends Model
         'sat_estado', 'sat_estatus_cancelacion', 'sat_efos', 'sat_verificado_at',
         'pago_fecha', 'pago_forma', 'pago_referencia', 'pago_user_id', 'pago_registrado_at',
         'transferencia_folio', 'transferencia_año', 'transferencia_numero', 'tesoreria_pago_id',
-        'clc_folio', 'clc_año', 'clc_folio_completo', 'clc_fecha', 'clc_user_id', 'clc_generada_at', 'clc_estado', 'clc_relacion_id',
+        'clc_folio', 'clc_año', 'clc_folio_completo', 'clc_fecha', 'clc_user_id', 'regidor_id', 'clc_generada_at', 'clc_estado', 'clc_relacion_id',
         'clc_cancelada_at', 'clc_cancelada_user_id', 'clc_motivo_cancelacion', 'cancelada_at', 'cancelada_user_id', 'motivo_cancelacion', 'almacen_asignada_at', 'almacen_asignada_user_id',
     ];
 
@@ -58,6 +58,33 @@ class OrdenCompra extends Model
      * A quién se le paga: el proveedor o, en un apoyo sin factura (sin_factura, folio AP-…), el
      * beneficiario capturado en la requisición.
      */
+    /** Regidor de la CLC: la subió él o su asistente (se fija al generarla con regidorDeOrigen()). */
+    public function regidor()
+    {
+        return $this->belongsTo(Regidor::class);
+    }
+
+    /**
+     * Regidor al que pertenece quien originó la CLC: quien capturó la requisición o el trámite y, si no, quien la
+     * genera. Null si ninguno pertenece a un regidor.
+     */
+    public function regidorDeOrigen(?User $genera = null): ?int
+    {
+        foreach (array_filter([$this->requisicion?->id_user_laravel, $this->tramiteServicio?->user_id]) as $id) {
+            if ($regidor = User::whereKey($id)->value('regidor_id')) {
+                return (int) $regidor;
+            }
+        }
+
+        return $genera?->regidor_id;
+    }
+
+    /** "REGIDORA MTRA. MARIA ELENA MARQUEZ MARTINEZ" (cargo y nombre), o null. */
+    public function nombreRegidor(): ?string
+    {
+        return $this->regidor ? trim($this->regidor->cargo.' '.$this->regidor->nombreConTitulo()) : null;
+    }
+
     public function aFavorDe(): ?string
     {
         return $this->sin_factura ? $this->requisicion?->beneficiario : $this->proveedor?->nombre;

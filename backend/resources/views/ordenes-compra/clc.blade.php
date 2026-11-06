@@ -164,6 +164,10 @@
         // Sindicatura (rol "visto bueno").
         $capturo = $req?->id_user_laravel ? \App\Models\User::with('regidor')->find($req->id_user_laravel) : null;
         $solicita = \App\Models\Firmante::titularDe($capturo, 'clc', $req?->id_cat_egreso_unidad_administrativa, $fechaClc);
+        // La subió un regidor o su asistente: firma el regidor de la CLC (aunque la requisición la capturara otro).
+        if ($orden->regidor) {
+            $solicita = ['nombre' => $orden->regidor->nombreConTitulo(), 'cargo' => $orden->regidor->cargo];
+        }
         $tesoreria = \App\Models\Firmante::vigente('clc', 'autoriza', null, $fechaClc);
         $sindicatura = \App\Models\Firmante::vigente('clc', 'vobo', null, $fechaClc);
         // Elaboró: firmante "Elabora" de la CLC o quien la generó.
@@ -201,7 +205,7 @@
             <td class="etiqueta">CLABE:</td>
         </tr>
         <tr>
-            <td class="caja">{{ mb_strtoupper($unidad?->nombre ?? '—') }}</td>
+            <td class="caja">{{ mb_strtoupper($unidad?->nombre ?? '—') }}{{ $orden->regidor ? ' — '.mb_strtoupper($orden->nombreRegidor()) : '' }}</td>
             <td></td>
             <td class="caja">{{ mb_strtoupper($cuenta?->banco?->descripcion ?? '—') }}</td>
             <td></td>
