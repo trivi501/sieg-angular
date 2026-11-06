@@ -148,7 +148,11 @@ export interface DetalleTramite {
     trabajador_nombre: string | null;
     trabajador_numero: string | null;
     trabajador_puesto: string | null;
+    /** Fondo: máximo por factura; null mientras está sin límite. */
     limite_factura: number | null;
+    /** Límite quitado a todos los fondos (menú "Quitar límite"): hasta cuándo (null si no) y quién lo quitó. */
+    sin_limite_hasta: string | null;
+    sin_limite_por: string | null;
     importe: number;
     neto: number;
     isr: number;

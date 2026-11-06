@@ -1,4 +1,4 @@
-import { Component, TemplateRef, computed, inject, signal, viewChild } from '@angular/core';
+import { Component, DestroyRef, TemplateRef, computed, inject, signal, viewChild } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
@@ -129,8 +129,28 @@ export class ServicioDetalleComponent {
     return { validadas: fs.filter((f) => f.revision === 'validada').length, rechazadas: fs.filter((f) => f.revision === 'rechazada').length, total: fs.length };
   });
 
+  /** Fondo sin límite: milisegundos que quedan (se recarga al terminar para volver al límite). */
+  restanteSinLimite = signal(0);
+
   constructor() {
     this.cargar();
+    const reloj = setInterval(() => {
+      const hasta = this.d()?.tramite.sin_limite_hasta;
+      if (!hasta) return;
+      const restante = new Date(hasta).getTime() - Date.now();
+      this.restanteSinLimite.set(Math.max(0, restante));
+      if (restante <= 0) {
+        this.aviso.set({ tipo: 'warning', texto: 'Terminó el tiempo sin límite: las facturas vuelven a ser de hasta $2,000.00.' });
+        this.cargar();
+      }
+    }, 1000);
+    inject(DestroyRef).onDestroy(() => clearInterval(reloj));
+  }
+
+  /** mm:ss */
+  cuenta(ms: number): string {
+    const s = Math.max(0, Math.ceil(ms / 1000));
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   }
 
   cargar(despues?: (d: DetalleTramite) => void): void {

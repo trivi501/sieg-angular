@@ -416,14 +416,21 @@
       </label>
     }
   </div>
+  @if (fondo && t.sin_limite_hasta) {
+    <!-- Límite quitado a todos los fondos desde el menú "Quitar límite" -->
+    <div class="alert alert-warning py-2 small">
+      <b>Sin límite de monto por factura</b> durante <b class="font-monospace">{{ cuenta(restanteSinLimite()) }}</b>
+      {{ t.sin_limite_por ? '(lo quitó ' + t.sin_limite_por + ')' : '' }}. Al terminar vuelve a {{ money(2000) }}; las facturas ya subidas se quedan.
+    </div>
+  }
   @if (d.puede.editar) {
     <p class="small text-muted">
       @if (combustible) {
         Solo las facturas del Excel del proveedor de esta bitácora (se ligan por serie y folio), vigentes en el SAT y a nombre del Ayuntamiento. También se pueden
         subir todas las del mes juntas desde la carga del Excel: cada una va sola a su bitácora.
       } @else if (fondo) {
-        Facturas de ingreso a nombre del Ayuntamiento, vigentes en el SAT, de cualquier proveedor (registrado o no) y de <b>hasta {{ money(t.limite_factura ?? 2000) }}</b>
-        cada una. Abre cada factura para asignarle su tipo de gasto (en viáticos, la comisión) y la partida de <b>cada artículo</b>: si una factura tiene artículos de dos
+        Facturas de ingreso a nombre del Ayuntamiento, vigentes en el SAT, de cualquier proveedor (registrado o no) y de <b>hasta {{ money(2000) }}</b>
+        cada una{{ t.sin_limite_hasta ? ' (ahora sin límite por unos minutos)' : '' }}. Abre cada factura para asignarle su tipo de gasto (en viáticos, la comisión) y la partida de <b>cada artículo</b>: si una factura tiene artículos de dos
         partidas, en la CLC sale un renglón por partida con solo su monto. Al enviarlo va directo a <b>Control Presupuestal</b>, que valida cada factura por separado.
       } @else {
         Facturas de ingreso a nombre del Ayuntamiento (con su régimen fiscal y un uso de CFDI aceptado), vigentes en el SAT y todas del mismo proveedor. Cada factura es un renglón de la requisición y de la CLC

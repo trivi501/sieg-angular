@@ -8,6 +8,7 @@ use App\Models\OrdenCompra;
 use App\Models\PresupuestoEgreso;
 use App\Models\TramiteServicio;
 use App\Models\TramiteServicioFactura;
+use App\Models\FondoSinLimite;
 use App\Services\FacturasTramite;
 use App\Services\GeneradorTramiteServicio;
 use App\Services\PresupuestoService;
@@ -117,6 +118,7 @@ class TramiteServicioController extends Controller
         $proveedor = $fondo ? null : $tramite->proveedor();
         $editable = $tramite->editable() && $user->can($tramite->permiso('create'));
         $oc = $tramite->ordenCompra;
+        $sinLimite = $fondo ? FondoSinLimite::vigente()?->load('usuario:id,name') : null;
 
         return response()->json([
             'tramite' => [
@@ -144,7 +146,10 @@ class TramiteServicioController extends Controller
                 'trabajador_nombre' => $tramite->trabajador_nombre,
                 'trabajador_numero' => $tramite->trabajador_numero,
                 'trabajador_puesto' => $tramite->trabajador_puesto,
-                'limite_factura' => $fondo ? TramiteServicio::LIMITE_FACTURA_FONDO : null,
+                'limite_factura' => $tramite->limiteFactura(),
+                // Fondo: el límite quitado a todos los fondos (menú "Quitar límite"): hasta cuándo y quién lo quitó.
+                'sin_limite_hasta' => $sinLimite?->hasta->toIso8601String(),
+                'sin_limite_por' => $sinLimite?->usuario?->name,
                 'importe' => round($tramite->facturas->sum(fn ($f) => $f->importe()), 2),
                 'neto' => round($tramite->facturas->sum('total'), 2),
                 'isr' => round($tramite->facturas->sum('isr'), 2),

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\Auditable;
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -187,6 +188,18 @@ class TramiteServicio extends Model
     public function requiereSuficienciaPrevia(): bool
     {
         return in_array($this->tipo, ['servicio', 'combustible'], true);
+    }
+
+    /** Fondo: hasta cuándo se pueden subir facturas sin límite (menú "Quitar límite", para todos los fondos), o null. */
+    public function sinLimiteHasta(): ?CarbonInterface
+    {
+        return $this->esFondo() ? FondoSinLimite::vigente()?->hasta : null;
+    }
+
+    /** Monto máximo por factura: $2,000 en un fondo (sin límite mientras esté quitado); en los demás, ninguno. */
+    public function limiteFactura(): ?float
+    {
+        return $this->esFondo() && ! $this->sinLimiteHasta() ? self::LIMITE_FACTURA_FONDO : null;
     }
 
     public function editable(): bool

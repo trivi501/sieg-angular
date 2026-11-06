@@ -80,6 +80,12 @@ const routes: Routes = [
         data: { permission: 'fondos-index', tipo: 'fondo' },
         loadComponent: () => import('./pages/servicios/servicios-lista.component').then((c) => c.ServiciosListaComponent)
       },
+      // Quitar límite: 5 minutos sin el límite de $2,000 por factura en todos los fondos.
+      {
+        path: 'fondos-limite',
+        data: { permission: 'fondos-sin-limite' },
+        loadComponent: () => import('./pages/servicios/quitar-limite.component').then((c) => c.QuitarLimiteComponent)
+      },
       {
         path: 'fondos/:id',
         data: { permission: 'fondos-index', tipo: 'fondo' },

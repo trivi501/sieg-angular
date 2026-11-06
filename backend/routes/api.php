@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\ContabilidadController;
 use App\Http\Controllers\Api\ContratoController;
 use App\Http\Controllers\Api\NominaController;
 use App\Http\Controllers\Api\FacturaController;
+use App\Http\Controllers\Api\FondoLimiteController;
 use App\Http\Controllers\Api\ModificacionPresupuestalController;
 use App\Http\Controllers\Api\OrdenCompraController;
 use App\Http\Controllers\Api\PadronController;
@@ -172,6 +173,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('{tramite}/tickets', [CombustibleController::class, 'tickets'])->whereNumber('tramite')->middleware('permission:combustible-index');
         Route::get('{tramite}/bitacora/excel', [CombustibleController::class, 'bitacoraExcel'])->whereNumber('tramite')->middleware('permission:combustible-index');
         Route::get('{tramite}/bitacora/pdf', [CombustibleController::class, 'bitacoraPdf'])->whereNumber('tramite')->middleware('permission:combustible-index');
+    });
+
+    // Menú "Quitar límite": todos los fondos revolventes aceptan facturas de más de $2,000 durante 5 minutos.
+    Route::prefix('fondos-limite')->middleware('permission:fondos-sin-limite')->group(function () {
+        Route::get('', [FondoLimiteController::class, 'show']);
+        Route::post('quitar', [FondoLimiteController::class, 'quitar']);
+        Route::post('restablecer', [FondoLimiteController::class, 'restablecer']);
     });
 
     foreach (['servicios' => 'servicio', 'fondos' => 'fondo', 'combustible' => 'combustible'] as $prefijo => $tipo) {

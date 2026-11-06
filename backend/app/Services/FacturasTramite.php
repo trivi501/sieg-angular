@@ -33,9 +33,11 @@ class FacturasTramite
         $cfdi ??= Cfdi::leer($contenido);
 
         $errores = [];
-        if ($fondo && $cfdi['total'] > TramiteServicio::LIMITE_FACTURA_FONDO) {
+        // Fondo: $2,000 por factura, salvo los 5 minutos en que se quita el límite (menú "Quitar límite").
+        $limite = $tramite->limiteFactura();
+        if ($limite !== null && $cfdi['total'] > $limite) {
             $errores[] = sprintf('La factura es por $%s: en un fondo revolvente cada factura puede ser de hasta $%s.',
-                number_format($cfdi['total'], 2), number_format(TramiteServicio::LIMITE_FACTURA_FONDO, 2));
+                number_format($cfdi['total'], 2), number_format($limite, 2));
         }
         if (! $fondo && $tramite->proveedor_rfc && $cfdi['rfc_emisor'] !== $tramite->proveedor_rfc) {
             $errores[] = "Todas las facturas del trámite deben ser del mismo proveedor ({$tramite->proveedor_rfc}); esta la emite {$cfdi['rfc_emisor']}.";

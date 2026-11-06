@@ -91,6 +91,13 @@ export const NavigationItems: NavigationItem[] = [
             permission: 'fondos-index'
           },
           {
+            id: 'fondos-limite',
+            title: 'Quitar límite',
+            type: 'item',
+            url: '/fondos-limite',
+            permission: 'fondos-sin-limite'
+          },
+          {
             id: 'contratos',
             title: 'Arrendamientos y contratos',
             type: 'item',

@@ -44,7 +44,7 @@ class RolesSistemaSeeder extends Seeder
         'Recursos Humanos' => ['nomina-index', 'nomina-create', 'presupuesto-capitulo-1000'],
         // Valida la nómina, los finiquitos y laudos y los fondos revolventes (factura por factura); al validar se
         // generan las CLC.
-        'Control Presupuestal' => ['nomina-index', 'nomina-validar', 'presupuesto-capitulo-1000', 'fondos-index', 'fondos-validar'],
+        'Control Presupuestal' => ['nomina-index', 'nomina-validar', 'presupuesto-capitulo-1000', 'fondos-index', 'fondos-validar', 'fondos-sin-limite'],
     ];
 
     public function run(): void
