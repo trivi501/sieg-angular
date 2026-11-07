@@ -45,7 +45,7 @@
           [disabled]="ocupado() || (fondo && revisadas().validadas < revisadas().total)"
           [title]="fondo && revisadas().validadas < revisadas().total ? 'Valida antes cada factura' : ''"
           (click)="ejecutar('validar')"
-          [appAccion]="fondo ? 'Validar fondo (genera requisición y CLC)' : 'Validar (genera requisición, orden de compra y CLC)'"
+          [appAccion]="viatico ? 'Validar viáticos (genera requisición y CLC)' : fondo ? 'Validar fondo (genera requisición y CLC)' : 'Validar (genera requisición, orden de compra y CLC)'"
           icono="check"
         ></button>
       }
@@ -53,7 +53,7 @@
         <button type="button" class="btn btn-outline-danger" (click)="modo.set('rechazar')" appAccion="No validar (con observaciones)" icono="close"></button>
       }
       @if (d.puede.cancelar) {
-        <button type="button" class="btn btn-outline-danger" (click)="modo.set('cancelar')" [appAccion]="fondo ? 'Cancelar fondo' : 'Cancelar trámite'" icono="stop"></button>
+        <button type="button" class="btn btn-outline-danger" (click)="modo.set('cancelar')" [appAccion]="viatico ? 'Cancelar viáticos' : fondo ? 'Cancelar fondo' : 'Cancelar trámite'" icono="stop"></button>
       }
     </div>
   </div>
@@ -140,14 +140,14 @@
           <textarea id="observaciones" rows="2" class="form-control mb-2" [(ngModel)]="observaciones"></textarea>
         } @else {
           <p class="small mb-2">
-            Se cancela todo el {{ fondo ? 'fondo' : 'trámite' }}{{ d.puede.cancelar_todo ? ': también su CLC ' + (t.orden?.clc ?? '') + ', su registro y la requisición ' + (t.requisicion ?? '') + ' (se libera el presupuesto comprometido)' : '' }}.
-            Sus {{ d.facturas.length }} factura(s) quedan como historial y <b>se pueden volver a subir</b> en otro {{ fondo ? 'fondo' : 'trámite' }}.
+            Se cancela todo el {{ viatico ? 'trámite de viáticos' : fondo ? 'fondo' : 'trámite' }}{{ d.puede.cancelar_todo ? ': también su CLC ' + (t.orden?.clc ?? '') + ', su registro y la requisición ' + (t.requisicion ?? '') + ' (se libera el presupuesto comprometido)' : '' }}.
+            Sus {{ d.facturas.length }} factura(s) quedan como historial y <b>se pueden volver a subir</b> en otro {{ fondo ? 'fondo o trámite de viáticos' : 'trámite' }}.
           </p>
           <label class="form-label" for="motivo">Motivo de la cancelación</label>
           <input id="motivo" class="form-control mb-2" [(ngModel)]="motivo" />
         }
         <div class="d-flex gap-2">
-          <button type="button" class="btn btn-danger" [disabled]="ocupado()" (click)="ejecutar(m)">{{ m === 'rechazar' ? 'No validar' : fondo ? 'Cancelar todo el fondo' : 'Cancelar trámite' }}</button>
+          <button type="button" class="btn btn-danger" [disabled]="ocupado()" (click)="ejecutar(m)">{{ m === 'rechazar' ? 'No validar' : viatico ? 'Cancelar todos los viáticos' : fondo ? 'Cancelar todo el fondo' : 'Cancelar trámite' }}</button>
           <button type="button" class="btn btn-outline-secondary" (click)="modo.set(null)">Cerrar</button>
         </div>
       </div>
@@ -429,8 +429,12 @@
         Solo las facturas del Excel del proveedor de esta bitácora (se ligan por serie y folio), vigentes en el SAT y a nombre del Ayuntamiento. También se pueden
         subir todas las del mes juntas desde la carga del Excel: cada una va sola a su bitácora.
       } @else if (fondo) {
-        Facturas de ingreso a nombre del Ayuntamiento, vigentes en el SAT, de cualquier proveedor (registrado o no) y de <b>hasta {{ money(2000) }}</b>
-        cada una{{ t.sin_limite_hasta ? ' (ahora sin límite por unos minutos)' : '' }}. Abre cada factura para asignarle su tipo de gasto (en viáticos, la comisión) y la partida de <b>cada artículo</b>: si una factura tiene artículos de dos
+        Facturas de ingreso a nombre del Ayuntamiento, vigentes en el SAT, de cualquier proveedor (registrado o no)
+        @if (viatico) {
+          y <b>sin límite de monto</b>.
+        } @else {
+          y de <b>hasta {{ money(2000) }}</b> cada una{{ t.sin_limite_hasta ? ' (ahora sin límite por unos minutos)' : '' }}.
+        } Abre cada factura para asignarle su tipo de gasto (en viáticos, la comisión) y la partida de <b>cada artículo</b>: si una factura tiene artículos de dos
         partidas, en la CLC sale un renglón por partida con solo su monto. Al enviarlo va directo a <b>Control Presupuestal</b>, que valida cada factura por separado.
       } @else {
         Facturas de ingreso a nombre del Ayuntamiento (con su régimen fiscal y un uso de CFDI aceptado), vigentes en el SAT y todas del mismo proveedor. Cada factura es un renglón de la requisición y de la CLC

@@ -14,7 +14,7 @@ import { SelectBusquedaDirective } from 'src/app/shared/select-busqueda.directiv
 import { RUTA_TIPO, ServiciosService, TipoTramite } from '../servicios/servicios.service';
 
 /** Tipo de trámite de la factura (columna y filtro). */
-type TipoFactura = 'orden' | 'servicio' | 'fondo' | 'combustible' | 'contrato' | 'por_asignar';
+type TipoFactura = 'orden' | 'servicio' | 'fondo' | 'viatico' | 'combustible' | 'contrato' | 'por_asignar';
 
 interface Factura {
   clave: string;
@@ -58,7 +58,7 @@ interface RespuestaFacturas extends Paginado<Factura> {
 }
 
 /** Ruta y prefijo de la API de cada tipo de trámite. */
-const TRAMITES: Partial<Record<TipoFactura, TipoTramite>> = { servicio: 'servicio', fondo: 'fondo', combustible: 'combustible' };
+const TRAMITES: Partial<Record<TipoFactura, TipoTramite>> = { servicio: 'servicio', fondo: 'fondo', viatico: 'viatico', combustible: 'combustible' };
 
 /**
  * Todas las facturas (CFDI) cargadas, con su tipo de trámite: órdenes de compra (también las canceladas con su
@@ -130,6 +130,7 @@ export class FacturasComponent {
         orden: 'bg-light-primary text-primary',
         servicio: 'bg-light-info text-info',
         fondo: 'bg-light-warning text-warning',
+        viatico: 'bg-light-danger text-danger',
         combustible: 'bg-light-success text-success',
         contrato: 'bg-light-secondary text-secondary',
         por_asignar: 'bg-light-dark text-dark'

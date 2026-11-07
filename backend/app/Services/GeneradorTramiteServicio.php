@@ -59,12 +59,12 @@ class GeneradorTramiteServicio
             if ($tramite->esFondo()) {
                 // Fondo revolvente: sin orden de compra; el registro que guarda la CLC va a favor del trabajador.
                 $orden = $this->registroFondo($tramite, $requisicion, $facturas, $user);
-                app(OrdenCompraController::class)->crearClc($orden, " (fondo revolvente {$tramite->folio_completo}; un renglón por factura y partida)");
+                app(OrdenCompraController::class)->crearClc($orden, " (".mb_strtolower($tramite->nombreTipo())." {$tramite->folio_completo}; un renglón por factura y partida)");
                 // La validó Control Presupuestal factura por factura: la CLC llega directo a su bandeja, sin pasar por
                 // Recursos Materiales.
                 $orden->refresh()->update(['clc_estado' => 'recibida_cp']);
                 app(TramiteClc::class)->movimiento($orden, 'recibir_cp', 'generada', 'recibida_cp', null,
-                    "Fondo revolvente {$tramite->folio_completo} validado por Control Presupuestal (factura por factura).", $user);
+                    "{$tramite->nombreTipo()} {$tramite->folio_completo} validado por Control Presupuestal (factura por factura).", $user);
             } else {
                 $orden = $this->orden($tramite, $requisicion, $facturas, $proveedor, $user);
                 app(OrdenCompraController::class)->crearClc($orden, " (".mb_strtolower($tramite->nombreTipo())." {$tramite->folio_completo}; un renglón por factura)");
@@ -203,7 +203,7 @@ class GeneradorTramiteServicio
             ]);
         }
 
-        $origen = $tramite->esFondo() ? "del fondo revolvente {$tramite->folio_completo} a favor de {$tramite->beneficiarioFondo()}" : match ($tramite->tipo) {
+        $origen = $tramite->esFondo() ? "de ".mb_strtolower($tramite->nombreTipo())." {$tramite->folio_completo} a favor de {$tramite->beneficiarioFondo()}" : match ($tramite->tipo) {
             'combustible' => 'de la bitácora de combustible',
             'contrato' => "de la mensualidad de contrato ({$tramite->contrato?->folio_completo})",
             default => 'del trámite de servicios',
@@ -242,11 +242,15 @@ class GeneradorTramiteServicio
         return $renglones;
     }
 
-    /** Fondo revolvente: el registro que guarda la CLC (folio FR-AÑO-0001), sin proveedor, a favor del trabajador. */
+    /**
+     * Fondo revolvente y viáticos: el registro que guarda la CLC (folio FR-AÑO-0001 o VI-AÑO-0001), sin proveedor, a
+     * favor del trabajador.
+     */
     private function registroFondo(TramiteServicio $tramite, EgresoRequisicion $requisicion, $facturas, User $user): OrdenCompra
     {
         $año = (int) now('America/Mexico_City')->format('Y');
-        $folio = (OrdenCompra::where('sin_factura', true)->where('folio_completo', 'like', "FR-{$año}-%")->lockForUpdate()->max('folio') ?? 0) + 1;
+        $serie = TramiteServicio::TIPOS[$tramite->tipo]['prefijo'];
+        $folio = (OrdenCompra::where('sin_factura', true)->where('folio_completo', 'like', "{$serie}-{$año}-%")->lockForUpdate()->max('folio') ?? 0) + 1;
 
         $registro = OrdenCompra::create([
             'id_tb_egreso_requisicion' => $requisicion->id_tb_egreso_requisicion,
@@ -255,10 +259,10 @@ class GeneradorTramiteServicio
             'tramite_servicio_id' => $tramite->id,
             'folio' => $folio,
             'año' => $año,
-            'folio_completo' => sprintf('FR-%d-%04d', $año, $folio),
+            'folio_completo' => sprintf('%s-%d-%04d', $serie, $año, $folio),
             'fecha' => now('America/Mexico_City')->toDateString(),
             'importe' => round((float) $requisicion->total, 2),
-            'observaciones' => "Fondo revolvente {$tramite->folio_completo}: {$facturas->count()} factura(s).",
+            'observaciones' => "{$tramite->nombreTipo()} {$tramite->folio_completo}: {$facturas->count()} factura(s).",
             'user_id' => $user->id,
             'xml_total' => round($facturas->sum('total'), 2),
             'xml_isr' => round($facturas->sum('isr'), 2),
@@ -267,7 +271,7 @@ class GeneradorTramiteServicio
         ]);
 
         $this->bitacora($requisicion, EgresoRequisicion::CON_FACTURA,
-            "Fondo revolvente {$tramite->folio_completo}: {$facturas->count()} factura(s) por $".number_format($registro->importe, 2)." a favor de {$tramite->beneficiarioFondo()}.");
+            "{$tramite->nombreTipo()} {$tramite->folio_completo}: {$facturas->count()} factura(s) por $".number_format($registro->importe, 2)." a favor de {$tramite->beneficiarioFondo()}.");
 
         return $registro;
     }

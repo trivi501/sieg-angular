@@ -91,6 +91,13 @@ export const NavigationItems: NavigationItem[] = [
             permission: 'fondos-index'
           },
           {
+            id: 'viaticos',
+            title: 'Viáticos',
+            type: 'item',
+            url: '/viaticos',
+            permission: 'viaticos-index'
+          },
+          {
             id: 'fondos-limite',
             title: 'Quitar límite',
             type: 'item',

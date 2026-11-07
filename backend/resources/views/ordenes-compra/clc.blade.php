@@ -91,7 +91,7 @@
 
         // Trámite de servicios: un renglón por factura aunque sean de la misma partida, con su folio fiscal y su ISR.
         // Fondo revolvente: además, uno por cada partida de la factura, solo con el monto de sus artículos.
-        $esFondo = $orden->tramite_servicio_id && \App\Models\TramiteServicio::whereKey($orden->tramite_servicio_id)->value('tipo') === 'fondo';
+        $esFondo = $orden->tramite_servicio_id && in_array(\App\Models\TramiteServicio::whereKey($orden->tramite_servicio_id)->value('tipo'), ['fondo', 'viatico'], true);
         if ($esFondo) {
             $nombrePartida = fn ($p) => \App\Models\PresupuestoEgreso::where('CLAVE', $unidad?->clave)->where('CLAVE3', $p['fuente'])
                 ->where('CLAVE6', $p['proyecto'])->where('PARTIDA', $p['partida'])->value('NOMBRE_PARTIDA');

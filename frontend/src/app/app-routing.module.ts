@@ -80,6 +80,17 @@ const routes: Routes = [
         data: { permission: 'fondos-index', tipo: 'fondo' },
         loadComponent: () => import('./pages/servicios/servicios-lista.component').then((c) => c.ServiciosListaComponent)
       },
+      // Viáticos: mismas pantallas que el fondo revolvente (data.tipo = viatico), sin límite por factura.
+      {
+        path: 'viaticos',
+        data: { permission: 'viaticos-index', tipo: 'viatico' },
+        loadComponent: () => import('./pages/servicios/servicios-lista.component').then((c) => c.ServiciosListaComponent)
+      },
+      {
+        path: 'viaticos/:id',
+        data: { permission: 'viaticos-index', tipo: 'viatico' },
+        loadComponent: () => import('./pages/servicios/servicio-detalle.component').then((c) => c.ServicioDetalleComponent)
+      },
       // Quitar límite: 5 minutos sin el límite de $2,000 por factura en todos los fondos.
       {
         path: 'fondos-limite',

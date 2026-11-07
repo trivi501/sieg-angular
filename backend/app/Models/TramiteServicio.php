@@ -31,6 +31,9 @@ class TramiteServicio extends Model
     public const TIPOS = [
         'servicio' => ['prefijo' => 'TS', 'permiso' => 'servicios', 'nombre' => 'Trámite de servicios'],
         'fondo' => ['prefijo' => 'FR', 'permiso' => 'fondos', 'nombre' => 'Fondo revolvente'],
+        // Viáticos: igual que el fondo revolvente (facturas de varios proveedores a favor de un trabajador, revisión
+        // de Control Presupuestal factura por factura), pero sin límite de monto por factura.
+        'viatico' => ['prefijo' => 'VI', 'permiso' => 'viaticos', 'nombre' => 'Viáticos'],
         'combustible' => ['prefijo' => 'BC', 'permiso' => 'combustible', 'nombre' => 'Bitácora de combustible'],
         'contrato' => ['prefijo' => 'TC', 'permiso' => 'contratos', 'nombre' => 'Mensualidad de contrato'],
     ];
@@ -144,9 +147,16 @@ class TramiteServicio extends Model
         return $proveedor->impedimentoParaOrden();
     }
 
+    /** Fondo revolvente o viáticos: mismo trámite (a favor de un trabajador, revisión factura por factura). */
     public function esFondo(): bool
     {
-        return $this->tipo === 'fondo';
+        return in_array($this->tipo, ['fondo', 'viatico'], true);
+    }
+
+    /** Viáticos: como el fondo revolvente, pero sin límite de monto por factura. */
+    public function esViatico(): bool
+    {
+        return $this->tipo === 'viatico';
     }
 
     public function esCombustible(): bool
@@ -193,13 +203,14 @@ class TramiteServicio extends Model
     /** Fondo: hasta cuándo se pueden subir facturas sin límite (menú "Quitar límite", para todos los fondos), o null. */
     public function sinLimiteHasta(): ?CarbonInterface
     {
-        return $this->esFondo() ? FondoSinLimite::vigente()?->hasta : null;
+        return $this->tipo === 'fondo' ? FondoSinLimite::vigente()?->hasta : null;
     }
 
     /** Monto máximo por factura: $2,000 en un fondo (sin límite mientras esté quitado); en los demás, ninguno. */
     public function limiteFactura(): ?float
     {
-        return $this->esFondo() && ! $this->sinLimiteHasta() ? self::LIMITE_FACTURA_FONDO : null;
+        // Solo el fondo revolvente; los viáticos no tienen límite.
+        return $this->tipo === 'fondo' && ! $this->sinLimiteHasta() ? self::LIMITE_FACTURA_FONDO : null;
     }
 
     public function editable(): bool

@@ -5,13 +5,17 @@ import { environment } from 'src/environments/environment';
 import { Paginado } from 'src/app/core/api';
 import type { ResumenCombustible } from '../combustible/combustible.service';
 
-/** servicio (/servicios, TS-…), fondo revolvente (/fondos, FR-…) o bitácora de combustible (/combustible, BC-…). */
-export type TipoTramite = 'servicio' | 'fondo' | 'combustible';
-export const RUTA_TIPO: Record<TipoTramite, string> = { servicio: 'servicios', fondo: 'fondos', combustible: 'combustible' };
+/**
+ * servicio (/servicios, TS-…), fondo revolvente (/fondos, FR-…), viáticos (/viaticos, VI-…: como el fondo, sin límite
+ * por factura) o bitácora de combustible (/combustible, BC-…).
+ */
+export type TipoTramite = 'servicio' | 'fondo' | 'viatico' | 'combustible';
+export const RUTA_TIPO: Record<TipoTramite, string> = { servicio: 'servicios', fondo: 'fondos', viatico: 'viaticos', combustible: 'combustible' };
 /** Nombres para títulos y enlaces. */
 export const NOMBRE_TIPO: Record<TipoTramite, { lista: string; uno: string; nuevo: string }> = {
   servicio: { lista: 'Trámites de servicios', uno: 'Trámite', nuevo: 'Nuevo trámite' },
   fondo: { lista: 'Fondos revolventes', uno: 'Fondo revolvente', nuevo: 'Nuevo fondo revolvente' },
+  viatico: { lista: 'Viáticos', uno: 'Viáticos', nuevo: 'Nuevos viáticos' },
   combustible: { lista: 'Bitácoras de combustible', uno: 'Bitácora de combustible', nuevo: '' }
 };
 

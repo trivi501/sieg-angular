@@ -498,7 +498,7 @@ class TramiteServicioController extends Controller
 
         return response()->json([
             'message' => $tramite->esFondo()
-                ? "Fondo revolvente validado: requisición {$requisicion->folio_completo} y CLC {$orden?->clc_folio_completo} a favor de {$tramite->trabajador_nombre}; la CLC ya está recibida en Control Presupuestal. Ya se pueden imprimir."
+                ? ($tramite->esViatico() ? 'Viáticos validados' : 'Fondo revolvente validado').": requisición {$requisicion->folio_completo} y CLC {$orden?->clc_folio_completo} a favor de {$tramite->trabajador_nombre}; la CLC ya está recibida en Control Presupuestal. Ya se pueden imprimir."
                 : ($tramite->esCombustible() ? 'Bitácora de combustible validada' : 'Trámite validado').": requisición {$requisicion->folio_completo}, orden de compra {$orden?->folio_completo} y CLC {$orden?->clc_folio_completo} generadas. Ya se pueden imprimir.",
         ]);
     }
@@ -587,7 +587,7 @@ class TramiteServicioController extends Controller
 
     private function reglasTrabajador(): array
     {
-        return $this->tipo() === 'fondo' ? [
+        return in_array($this->tipo(), ['fondo', 'viatico'], true) ? [
             'trabajador_nombre' => 'nullable|string|max:300',
             'trabajador_numero' => 'nullable|string|max:30',
             'trabajador_puesto' => 'nullable|string|max:200',
@@ -596,7 +596,7 @@ class TramiteServicioController extends Controller
 
     private function datosTrabajador(array $validated): array
     {
-        return $this->tipo() === 'fondo' ? [
+        return in_array($this->tipo(), ['fondo', 'viatico'], true) ? [
             'trabajador_nombre' => filled($validated['trabajador_nombre'] ?? null) ? mb_strtoupper(trim($validated['trabajador_nombre'])) : null,
             'trabajador_numero' => filled($validated['trabajador_numero'] ?? null) ? trim($validated['trabajador_numero']) : null,
             'trabajador_puesto' => filled($validated['trabajador_puesto'] ?? null) ? mb_strtoupper(trim($validated['trabajador_puesto'])) : null,

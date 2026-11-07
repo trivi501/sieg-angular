@@ -28,6 +28,7 @@ class FacturaController extends Controller
         'orden' => 'Orden de compra',
         'servicio' => 'Trámite de servicios',
         'fondo' => 'Fondo revolvente',
+        'viatico' => 'Viáticos',
         'combustible' => 'Bitácora de combustible',
         'contrato' => 'Mensualidad de contrato',
         'por_asignar' => 'Combustible (por asignar)',

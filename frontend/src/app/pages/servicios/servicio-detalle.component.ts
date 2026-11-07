@@ -80,7 +80,9 @@ export class ServicioDetalleComponent {
   readonly id = Number(this.ruta.paramMap.get('id'));
   /** servicio (/servicios), fondo revolvente (/fondos) o bitácora de combustible (/combustible). */
   readonly tipo: TipoTramite = this.ruta.data['tipo'] ?? 'servicio';
-  readonly fondo = this.tipo === 'fondo';
+  /** Fondo revolvente o viáticos (mismo trámite; los viáticos sin límite por factura). */
+  readonly fondo = this.tipo === 'fondo' || this.tipo === 'viatico';
+  readonly viatico = this.tipo === 'viatico';
   readonly combustible = this.tipo === 'combustible';
   readonly nombre = NOMBRE_TIPO[this.tipo];
   // Combustible: cada secretaría ve sus bitácoras en /combustible/bitacoras (/combustible es de la unidad de combustibles).

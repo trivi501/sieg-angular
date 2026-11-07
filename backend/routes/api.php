@@ -182,7 +182,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('restablecer', [FondoLimiteController::class, 'restablecer']);
     });
 
-    foreach (['servicios' => 'servicio', 'fondos' => 'fondo', 'combustible' => 'combustible'] as $prefijo => $tipo) {
+    foreach (['servicios' => 'servicio', 'fondos' => 'fondo', 'viaticos' => 'viatico', 'combustible' => 'combustible'] as $prefijo => $tipo) {
         Route::prefix($prefijo)->whereNumber(['tramite', 'factura'])->group(function () use ($prefijo, $tipo) {
             Route::get('', [TramiteServicioController::class, 'index'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-index");
             Route::post('', [TramiteServicioController::class, 'store'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-create");

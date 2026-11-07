@@ -45,6 +45,7 @@ class SyncPermissions extends Command
             // Fondos revolventes: cada área sube los suyos; validar se asigna desde Roles.
             'fondos-index', 'fondos-create', 'fondos-validar',
             'fondos-sin-limite', // menú "Quitar límite": 5 minutos sin el límite de $2,000 en todos los fondos
+            'viaticos-index', 'viaticos-create', 'viaticos-validar', // viáticos: como el fondo, sin límite por factura
             // Bitácora de combustible: la unidad de combustibles sube XML y Excel (cargar); cada secretaría llena la suya (create).
             'combustible-index', 'combustible-cargar', 'combustible-create', 'combustible-validar',
             // Arrendamientos y servicios por contrato: el área registra y carga el XML de cada mes; RM autoriza el contrato.

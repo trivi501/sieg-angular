@@ -34,8 +34,13 @@ import { ListaTramites, NOMBRE_TIPO, RUTA_TIPO, ServiciosService, TipoTramite, c
             (partida, proyecto y fuente) y el concepto, y solicita la validación. Al validarse, si hay suficiencia, se generan la requisición, la orden de
             compra y la CLC.
           } @else if (fondo) {
-            Cada área sube las facturas de sus gastos menores (de distintos proveedores, hasta $2,000 cada una) y asigna la partida de cada artículo. Al validarse se
-            generan la requisición y la CLC a favor del trabajador.
+            @if (viatico) {
+              Cada área sube las facturas de los viáticos de una comisión (de distintos proveedores, sin límite de monto) y asigna la partida de cada artículo.
+              Control Presupuestal valida cada factura; al validarse se generan la requisición y la CLC a favor del trabajador.
+            } @else {
+              Cada área sube las facturas de sus gastos menores (de distintos proveedores, hasta $2,000 cada una) y asigna la partida de cada artículo. Al validarse se
+              generan la requisición y la CLC a favor del trabajador.
+            }
           } @else {
             Se suben las facturas (XML) de un mismo proveedor, se clasifica cada una y Recursos Materiales las valida. Al validarse se generan la requisición, la orden
             de compra y la CLC (un renglón por factura).
@@ -67,7 +72,7 @@ import { ListaTramites, NOMBRE_TIPO, RUTA_TIPO, ServiciosService, TipoTramite, c
               name="concepto"
               class="form-control"
               maxlength="3000"
-              [placeholder]="fondo ? 'P. ej. Reposición de fondo revolvente de octubre' : 'P. ej. Servicio de mantenimiento de aires acondicionados'"
+              [placeholder]="viatico ? 'P. ej. Viáticos de la comisión a la Ciudad de México del 12 y 13 de octubre' : fondo ? 'P. ej. Reposición de fondo revolvente de octubre' : 'P. ej. Servicio de mantenimiento de aires acondicionados'"
               [(ngModel)]="concepto"
               [class.is-invalid]="errores()['concepto']"
             />
@@ -173,7 +178,9 @@ export class ServiciosListaComponent {
   private router = inject(Router);
 
   readonly tipo: TipoTramite = inject(ActivatedRoute).snapshot.data['tipo'] ?? 'servicio';
-  readonly fondo = this.tipo === 'fondo';
+  /** Fondo revolvente o viáticos (mismo trámite; los viáticos sin límite por factura). */
+  readonly fondo = this.tipo === 'fondo' || this.tipo === 'viatico';
+  readonly viatico = this.tipo === 'viatico';
   readonly combustible = this.tipo === 'combustible';
   readonly veCargas = inject(AuthService).can(['combustible-cargar', 'combustible-validar']);
   readonly nombre = NOMBRE_TIPO[this.tipo];
