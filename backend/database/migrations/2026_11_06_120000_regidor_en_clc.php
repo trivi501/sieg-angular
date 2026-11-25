@@ -23,12 +23,14 @@ return new class extends Migration
             });
         }
 
+        // Las bases que vienen del SIEG anterior pueden no tener la columna id_user_laravel en las requisiciones.
+        $conUsuarioReq = Schema::hasColumn('tb_egreso_requisicion', 'id_user_laravel');
         $regidorDe = fn ($userId) => $userId ? DB::table('users')->where('id', $userId)->value('regidor_id') : null;
         DB::table('ordenes_compra as o')
             ->leftJoin('tb_egreso_requisicion as r', 'r.id_tb_egreso_requisicion', '=', 'o.id_tb_egreso_requisicion')
             ->leftJoin('tramites_servicio as t', 't.id', '=', 'o.tramite_servicio_id')
             ->whereNotNull('o.clc_folio_completo')->whereNull('o.regidor_id')
-            ->select('o.id', 'r.id_user_laravel', 't.user_id as tramite_user', 'o.clc_user_id')
+            ->select('o.id', $conUsuarioReq ? 'r.id_user_laravel' : DB::raw('NULL as id_user_laravel'), 't.user_id as tramite_user', 'o.clc_user_id')
             ->orderBy('o.id')
             ->each(function ($o) use ($regidorDe) {
                 $regidor = $regidorDe($o->id_user_laravel) ?? $regidorDe($o->tramite_user) ?? $regidorDe($o->clc_user_id);
