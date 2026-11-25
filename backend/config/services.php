@@ -36,6 +36,9 @@ return [
         // 603: Personas Morales con Fines no Lucrativos (el Municipio).
         'regimen_receptor' => env('SAT_REGIMEN_RECEPTOR', '603'),
         'usos_cfdi' => array_filter(explode(',', (string) env('SAT_USOS_CFDI', 'G01,G03,I01,I02,I03,I04,I05,I06,I07,I08,S01'))),
+        // Solo con APP_ENV=local (desarrollo): no se consulta al SAT y las facturas se toman como vigentes. En
+        // producción siempre se verifica, sin importar este valor. SAT_VERIFICAR_LOCAL=true lo vuelve a activar en local.
+        'verificar_local' => (bool) env('SAT_VERIFICAR_LOCAL', false),
     ],
 
     'slack' => [

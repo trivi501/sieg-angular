@@ -37,6 +37,12 @@ class EstadoCfdiSat
     public function consultar(string $rfcEmisor, string $rfcReceptor, float $total, string $uuid, ?string $sello = null): ?array
     {
         $this->motivo = 'El SAT no respondió; intenta más tarde.';
+        // Desarrollo (APP_ENV=local): sin consultar al SAT, se toma como vigente. Nunca en producción.
+        if (self::omitirEnLocal()) {
+            Log::info("Consulta de CFDI {$uuid} al SAT omitida (APP_ENV=local).");
+
+            return ['estado' => self::VIGENTE, 'estatus_cancelacion' => null, 'es_cancelable' => null, 'efos' => false, 'codigo' => 'Sin consultar (local)'];
+        }
         $expresion = $this->expresion($rfcEmisor, $rfcReceptor, $total, $uuid, $sello);
         $sobre = '<?xml version="1.0" encoding="utf-8"?>'
             .'<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tem="http://tempuri.org/">'
@@ -74,6 +80,12 @@ class EstadoCfdiSat
 
             return null;
         }
+    }
+
+    /** Solo en desarrollo (APP_ENV=local) y si no se pidió verificar (SAT_VERIFICAR_LOCAL): no se consulta al SAT. */
+    public static function omitirEnLocal(): bool
+    {
+        return app()->environment('local') && ! config('services.sat.verificar_local');
     }
 
     /** Consulta la factura ya cargada en la orden de compra (lee receptor y sello del XML guardado). */
