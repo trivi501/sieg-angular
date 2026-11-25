@@ -4,7 +4,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { NgbModal, NgbModalRef } from '@ng-bootstrap/ng-bootstrap';
-import { forkJoin, of } from 'rxjs';
+import { Observable, forkJoin, of } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 
 import { erroresDe } from 'src/app/core/api';
@@ -26,7 +26,21 @@ import {
   claseEstadoTramite,
   claseRevision
 } from './servicios.service';
-import { CombustibleService, TicketCombustible, litros } from '../combustible/combustible.service';
+import { CombustibleService, DatosVale, TicketCombustible, litros } from '../combustible/combustible.service';
+
+/** Vale nuevo, sin datos. */
+const valeVacio = (): DatosVale => ({
+  vale: null,
+  numero_economico: null,
+  fecha_vale: null,
+  departamento: null,
+  conductor: null,
+  producto: null,
+  litros: null,
+  precio: null,
+  importe: null,
+  tramite_servicio_factura_id: null
+});
 
 type Aviso = { tipo: 'success' | 'danger' | 'warning'; texto: string };
 /** Clasificación de una factura mientras se edita. */
@@ -57,6 +71,13 @@ type LineaArticulo = { partida: string; proyecto: string; fuente: string };
     .fila-factura {
       cursor: pointer;
     }
+    .tabla-vales .form-control,
+    .tabla-vales .form-select {
+      min-width: 95px;
+    }
+    .tabla-vales input[type='date'] {
+      min-width: 135px;
+    }
     .min-w-0 {
       min-width: 0;
     }
@@ -83,6 +104,10 @@ export class ServicioDetalleComponent {
   /** Fondo revolvente o viáticos (mismo trámite; los viáticos sin límite por factura). */
   readonly fondo = this.tipo === 'fondo' || this.tipo === 'viatico';
   readonly viatico = this.tipo === 'viatico';
+  /** Quien valida revisa factura por factura: fondo, viáticos y trámites de servicios. */
+  readonly revisaFacturas = this.fondo || this.tipo === 'servicio';
+  /** Servicios: observación de quien valida, por factura (en su tarjeta). */
+  observacionTarjeta: Record<number, string> = {};
   readonly combustible = this.tipo === 'combustible';
   readonly nombre = NOMBRE_TIPO[this.tipo];
   // Combustible: cada secretaría ve sus bitácoras en /combustible/bitacoras (/combustible es de la unidad de combustibles).
@@ -112,9 +137,10 @@ export class ServicioDetalleComponent {
   motivo = '';
   modo = signal<'rechazar' | 'cancelar' | null>(null);
 
-  /** Combustible: los tickets del Excel (se cargan al abrirlos) y la clasificación para todas las facturas. */
+  /** Combustible: los vales de la bitácora, su edición (por id), el vale nuevo y la clasificación para todas las facturas. */
   tickets = signal<TicketCombustible[] | null>(null);
-  verTickets = signal(false);
+  edicion: Record<number, DatosVale> = {};
+  nuevoVale: DatosVale = valeVacio();
   todas: Clasificacion = { partida: '', proyecto: '', fuente: '', concepto: '' };
 
   /** Fondo: la factura abierta en la ventana (por id), su posición y lo que se escribe al no validarla. */
@@ -175,6 +201,8 @@ export class ServicioDetalleComponent {
         if (this.combustible && !this.todas.partida) {
           this.todas = { partida: primera?.partida ?? '', proyecto: primera?.proyecto ?? '', fuente: primera?.fuente ?? '', concepto: primera?.concepto ?? d.tramite.concepto };
         }
+        // Combustible: la bitácora de vales siempre a la vista (con sus alertas).
+        if (this.combustible) this.cargarVales();
         despues?.(d);
       },
       error: (e: HttpErrorResponse) => this.error.set(e.status === 404 ? 'No existe.' : erroresDe(e).mensaje)
@@ -269,7 +297,52 @@ export class ServicioDetalleComponent {
       next: (r) => {
         this.ocupado.set(false);
         this.erroresFactura.set({ ...this.erroresFactura(), [f.id]: '' });
+        // Servicios (tarjetas, sin ventana): solo se recarga.
+        if (!this.fondo) {
+          this.observacionTarjeta[f.id] = '';
+          this.aviso.set({ tipo: revision === 'rechazada' ? 'warning' : 'success', texto: r.message });
+          this.cargar();
+          return;
+        }
         this.cargar((d) => (revision === 'pendiente' ? this.abrirFactura(f) : this.siguientePendiente(d, desde, r.message)));
+      },
+      error: (e: HttpErrorResponse) => {
+        this.ocupado.set(false);
+        const { campos, mensaje } = erroresDe(e);
+        this.erroresFactura.set({ ...this.erroresFactura(), [f.id]: Object.values(campos)[0] ?? mensaje });
+      }
+    });
+  }
+
+  /** Servicios (tarjetas): quien valida valida o no la factura, con la observación escrita en su tarjeta. */
+  revisarTarjeta(f: FacturaTramite, revision: RevisionFactura | 'pendiente'): void {
+    this.observacionFactura = this.observacionTarjeta[f.id] ?? '';
+    this.revisar(f, revision);
+  }
+
+  /** En revisión: la factura no validada ya corregida vuelve a revisión. */
+  solicitarRevision(f: FacturaTramite): void {
+    const desde = this.posicion();
+    this.ocupado.set(true);
+    this.servicio.solicitarRevision(this.tipo, this.id, f.id).subscribe({
+      next: (r) => {
+        this.ocupado.set(false);
+        if (!this.ventana) {
+          this.aviso.set({ tipo: 'success', texto: r.message });
+          this.cargar();
+          return;
+        }
+        this.cargar((d) => {
+          // La siguiente que falte corregir; si ya no hay, se cierra la ventana.
+          const otra = [...d.facturas.slice(desde + 1), ...d.facturas.slice(0, desde + 1)].find((x) => x.solicitar_revision);
+          if (otra) {
+            this.abrirFactura(otra);
+            this.avisoVentana.set({ tipo: 'success', texto: r.message });
+          } else {
+            this.ventana?.close();
+            this.aviso.set({ tipo: 'success', texto: r.message });
+          }
+        });
       },
       error: (e: HttpErrorResponse) => {
         this.ocupado.set(false);
@@ -289,10 +362,17 @@ export class ServicioDetalleComponent {
       next: (r) => {
         this.ocupado.set(false);
         input.value = '';
+        const texto = [r.message, r.aviso].filter((x) => !!x).join(' · ');
+        // Servicios (tarjetas): sin ventana; la nueva aparece en su tarjeta para clasificarla.
+        if (!this.fondo) {
+          this.aviso.set({ tipo: r.aviso ? 'warning' : 'success', texto });
+          this.cargar();
+          return;
+        }
         this.cargar((d) => {
           const nueva = d.facturas.find((x) => x.id === r.id);
           if (nueva) this.abrirFactura(nueva);
-          this.avisoVentana.set({ tipo: r.aviso ? 'warning' : 'success', texto: [r.message, r.aviso].filter((x) => !!x).join(' · ') });
+          this.avisoVentana.set({ tipo: r.aviso ? 'warning' : 'success', texto });
         });
       },
       error: (e: HttpErrorResponse) => {
@@ -531,11 +611,75 @@ export class ServicioDetalleComponent {
     });
   }
 
-  alternarTickets(): void {
-    this.verTickets.set(!this.verTickets());
-    if (this.verTickets() && !this.tickets()) {
-      this.combustibles.tickets(this.id).subscribe((r) => this.tickets.set(r.tickets));
-    }
+  /** Vales de la bitácora (con lo que le falta a cada uno). */
+  cargarVales(): void {
+    this.combustibles.tickets(this.id).subscribe((r) => {
+      this.tickets.set(r.tickets);
+      this.edicion = Object.fromEntries(
+        r.tickets.map((v) => [
+          v.id,
+          {
+            vale: v.vale,
+            numero_economico: v.numero_economico,
+            fecha_vale: v.fecha_vale,
+            departamento: v.departamento,
+            conductor: v.conductor,
+            producto: v.producto,
+            litros: v.litros,
+            precio: v.precio,
+            importe: v.importe,
+            tramite_servicio_factura_id: v.factura_id
+          }
+        ])
+      );
+    });
+  }
+
+  /** ¿Le falta ese dato al vale? (alerta en rojo) */
+  falta(v: TicketCombustible, campo: string): boolean {
+    const nombre = this.d()?.combustible?.campos[campo];
+    return !!nombre && v.faltan.includes(nombre);
+  }
+
+  /** Agrega un vale (aunque le falten datos: se completan después). */
+  agregarVale(): void {
+    this.accionVale(this.combustibles.agregarVale(this.id, this.nuevoVale), () => (this.nuevoVale = valeVacio()));
+  }
+
+  /** Despliega los conceptos de la factura como vales; luego se llenan los datos que falten. */
+  desplegarConceptos(facturaId: number): void {
+    this.accionVale(this.combustibles.desplegarConceptos(this.id, facturaId));
+  }
+
+  /** Un vale más con lo que falta de asignar de la factura (cuando un concepto cubre varias cargas). */
+  valePendiente(facturaId: number): void {
+    this.accionVale(this.combustibles.valePendiente(this.id, facturaId));
+  }
+
+  guardarVale(v: TicketCombustible): void {
+    this.accionVale(this.combustibles.actualizarVale(this.id, v.id, this.edicion[v.id]));
+  }
+
+  quitarVale(v: TicketCombustible): void {
+    if (!confirm(`¿Quitar el vale ${v.vale ?? 'sin número'} de la bitácora?`)) return;
+    this.accionVale(this.combustibles.quitarVale(this.id, v.id));
+  }
+
+  private accionVale(peticion: Observable<{ message: string }>, alTerminar?: () => void): void {
+    this.ocupado.set(true);
+    peticion.subscribe({
+      next: (r) => {
+        this.ocupado.set(false);
+        alTerminar?.();
+        this.aviso.set({ tipo: r.message.includes('Le falta') ? 'warning' : 'success', texto: r.message });
+        this.cargar();
+      },
+      error: (e: HttpErrorResponse) => {
+        this.ocupado.set(false);
+        const { campos, mensaje } = erroresDe(e);
+        this.aviso.set({ tipo: 'danger', texto: Object.values(campos)[0] ?? mensaje });
+      }
+    });
   }
 
   bitacora(formato: 'excel' | 'pdf'): void {

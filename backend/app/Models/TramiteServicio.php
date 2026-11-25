@@ -52,6 +52,9 @@ class TramiteServicio extends Model
         'otros' => 'Otros gastos menores',
     ];
 
+    /** Servicios y combustible ya con suficiencia (paso 1) a los que les falta generar requisición, OC y CLC (paso 2). */
+    public const TEXTO_FALTA_GENERAR = 'Con suficiencia, falta generar';
+
     /** Estados en los que el área todavía puede subir, quitar o clasificar facturas. */
     public const EDITABLES = ['captura', 'rechazado'];
 
@@ -67,6 +70,21 @@ class TramiteServicio extends Model
     protected function casts(): array
     {
         return ['enviado_at' => 'datetime', 'validado_at' => 'datetime', 'suficiencia' => 'boolean', 'suficiencia_detalle' => 'array', 'suficiencia_at' => 'datetime'];
+    }
+
+    /**
+     * Texto del estado. Validar la suficiencia no cambia el estado (sigue por validar hasta generar), así que se
+     * aclara para que no parezca que el trámite ya validado sigue pendiente.
+     */
+    public function estadoTexto(): string
+    {
+        return $this->estadoClave() === 'falta_generar' ? self::TEXTO_FALTA_GENERAR : (self::ESTADOS[$this->estado] ?? $this->estado);
+    }
+
+    /** Estado para mostrar y filtrar: el guardado, o falta_generar si ya tiene suficiencia y sigue por validar. */
+    public function estadoClave(): string
+    {
+        return $this->estado === 'por_validar' && $this->suficiencia === true ? 'falta_generar' : $this->estado;
     }
 
     public function facturas()
@@ -151,6 +169,23 @@ class TramiteServicio extends Model
     public function esFondo(): bool
     {
         return in_array($this->tipo, ['fondo', 'viatico'], true);
+    }
+
+    /**
+     * Quien valida revisa cada factura por separado (validada o no validada, con su observación) y el área corrige o
+     * cancela las no validadas: fondo revolvente, viáticos y trámites de servicios.
+     */
+    public function revisaPorFactura(): bool
+    {
+        return $this->esFondo() || $this->tipo === 'servicio';
+    }
+
+    /** Cambiaron sus facturas: la suficiencia revisada ya no cuenta (servicios y combustible). */
+    public function reiniciarSuficiencia(): void
+    {
+        if ($this->suficiencia_at !== null) {
+            $this->update(['suficiencia' => null, 'suficiencia_detalle' => null, 'suficiencia_at' => null, 'suficiencia_user_id' => null]);
+        }
     }
 
     /** Viáticos: como el fondo revolvente, pero sin límite de monto por factura. */

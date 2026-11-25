@@ -9,6 +9,7 @@ use App\Models\CombustibleFactura;
 use App\Models\CombustibleLote;
 use App\Models\EgresoUnidadAdministrativa;
 use App\Models\TramiteServicio;
+use App\Models\TramiteServicioFactura;
 use App\Models\Vehiculo;
 use App\Services\Cfdi;
 use App\Services\ExcelCombustible;
@@ -217,7 +218,8 @@ class CombustibleController extends Controller
                     'folio' => $b->folio_completo,
                     'unidad' => $b->unidadAdministrativa ? trim($b->unidadAdministrativa->clave.' — '.$b->unidadAdministrativa->nombre) : null,
                     'estado' => $b->estado,
-                    'estado_texto' => TramiteServicio::ESTADOS[$b->estado] ?? $b->estado,
+                    'estado_clave' => $b->estadoClave(),
+                    'estado_texto' => $b->estadoTexto(),
                     'tickets' => (int) ($porBitacora[$b->id]->tickets ?? 0),
                     'litros' => round((float) ($porBitacora[$b->id]->litros ?? 0), 3),
                     'importe' => round((float) ($porBitacora[$b->id]->importe ?? 0), 2),
@@ -322,6 +324,19 @@ class CombustibleController extends Controller
         return response()->json(['message' => "Carga de {$lote->periodo} eliminada.".($regresan ? " {$regresan} factura(s) regresaron a por asignar." : '')]);
     }
 
+    /** Secretarías para crear una bitácora: todas para la unidad de combustibles; para el área, las suyas. */
+    public function unidades(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $query = EgresoUnidadAdministrativa::where('activo', true)->orderBy('clave');
+        if (! $this->veTodos($user)) {
+            $query->whereIn('id_cat_egreso_unidad_administrativa', EgresoUnidadAdministrativa::idsMismaClave($user->id_cat_egreso_unidad_administrativa) ?: [0]);
+        }
+        $unidades = $query->get(['id_cat_egreso_unidad_administrativa as id', 'clave', 'nombre']);
+
+        return response()->json(['unidades' => $unidades, 'unidadDefault' => $unidades->count() === 1 ? $unidades->first()->id : null]);
+    }
+
     /** Tickets de una bitácora. */
     public function tickets(TramiteServicio $tramite): JsonResponse
     {
@@ -330,23 +345,194 @@ class CombustibleController extends Controller
         return response()->json(['tickets' => $this->filasBitacora($tramite)]);
     }
 
+    /**
+     * Agrega un vale a la bitácora. La unidad de combustibles (o el área) lo captura en cualquier momento, aun con
+     * datos incompletos (se avisan los que falten) y aun ya generada la CLC.
+     */
+    public function agregarVale(Request $request, TramiteServicio $tramite): JsonResponse
+    {
+        $this->exigirCapturaVales($tramite);
+        $vale = $tramite->cargas()->create($this->datosVale($request, $tramite));
+
+        return response()->json(['id' => $vale->id, 'message' => $this->mensajeVale($vale, 'agregado')], 201);
+    }
+
+    public function actualizarVale(Request $request, TramiteServicio $tramite, CombustibleCarga $vale): JsonResponse
+    {
+        $this->exigirCapturaVales($tramite);
+        abort_unless($vale->tramite_servicio_id === $tramite->id, 404);
+        $vale->update($this->datosVale($request, $tramite, $vale));
+
+        return response()->json(['message' => $this->mensajeVale($vale->fresh(), 'guardado')]);
+    }
+
+    public function quitarVale(TramiteServicio $tramite, CombustibleCarga $vale): JsonResponse
+    {
+        $this->exigirCapturaVales($tramite);
+        abort_unless($vale->tramite_servicio_id === $tramite->id, 404);
+        $vale->delete();
+
+        return response()->json(['message' => 'Vale '.($vale->vale ?? '').' quitado de la bitácora.']);
+    }
+
+    /**
+     * Despliega los conceptos de una factura como vales: uno por concepto, con tipo, litros, precio y monto (con IVA)
+     * del XML y ligado a la factura. Solo faltan vale, no. económico, fecha, departamento y quien carga.
+     */
+    public function desplegarConceptos(TramiteServicio $tramite, TramiteServicioFactura $factura): JsonResponse
+    {
+        $this->exigirCapturaVales($tramite);
+        abort_unless($factura->tramite_servicio_id === $tramite->id, 404);
+        if ($tramite->cargas()->where('tramite_servicio_factura_id', $factura->id)->exists()) {
+            return response()->json(['message' => 'Esa factura ya tiene vales: complétalos o agrega uno con lo pendiente.'], 422);
+        }
+        $creados = 0;
+        foreach ($factura->conceptos ?? [] as $c) {
+            $litros = (float) ($c['cantidad'] ?? 0);
+            $monto = round((float) ($c['importe'] ?? 0) - (float) ($c['descuento'] ?? 0) + (float) ($c['iva'] ?? 0) + (float) ($c['ieps'] ?? 0), 2);
+            $tramite->cargas()->create([
+                'producto' => filled($c['descripcion'] ?? null) ? mb_strtoupper(mb_substr(trim($c['descripcion']), 0, 40)) : null,
+                'litros' => $litros ?: null,
+                'importe' => $monto ?: null,
+                'precio' => $litros > 0 ? round($monto / $litros, 4) : null,
+                'tramite_servicio_factura_id' => $factura->id,
+                'factura_folio' => CombustibleCarga::normalizarFolio($factura->serieFolio()),
+                'fecha_factura' => $factura->fecha?->toDateString(),
+            ]);
+            $creados++;
+        }
+
+        return response()->json(['message' => "Factura {$factura->serieFolio()}: {$creados} concepto(s) desplegados como vales. Completa no. de vale, no. económico, fecha, departamento y quien carga."], 201);
+    }
+
+    /** Agrega un vale con lo que falta de asignar de la factura (litros y monto del XML menos los vales ya capturados). */
+    public function valePendiente(TramiteServicio $tramite, TramiteServicioFactura $factura): JsonResponse
+    {
+        $this->exigirCapturaVales($tramite);
+        abort_unless($factura->tramite_servicio_id === $tramite->id, 404);
+        $pendiente = $this->pendienteFactura($tramite, $factura);
+        if ($pendiente['litros'] <= 0.0005 && $pendiente['monto'] <= 0.005) {
+            return response()->json(['message' => "La factura {$factura->serieFolio()} ya está asignada completa en sus vales."], 422);
+        }
+        $tramite->cargas()->create([
+            'producto' => $pendiente['producto'],
+            'litros' => $pendiente['litros'] > 0 ? round($pendiente['litros'], 3) : null,
+            'importe' => $pendiente['monto'] > 0 ? round($pendiente['monto'], 2) : null,
+            'precio' => $pendiente['litros'] > 0 && $pendiente['monto'] > 0 ? round($pendiente['monto'] / $pendiente['litros'], 4) : null,
+            'tramite_servicio_factura_id' => $factura->id,
+            'factura_folio' => CombustibleCarga::normalizarFolio($factura->serieFolio()),
+            'fecha_factura' => $factura->fecha?->toDateString(),
+        ]);
+
+        return response()->json(['message' => sprintf('Vale agregado con lo pendiente de la factura %s: %s L por $%s.', $factura->serieFolio(),
+            number_format($pendiente['litros'], 3), number_format($pendiente['monto'], 2))], 201);
+    }
+
+    /** Litros y monto (con IVA) del XML que todavía no están en vales; y el tipo del primer concepto. */
+    public function pendienteFactura(TramiteServicio $tramite, TramiteServicioFactura $factura): array
+    {
+        $conceptos = collect($factura->conceptos ?? []);
+        $vales = $tramite->cargas()->where('tramite_servicio_factura_id', $factura->id);
+
+        return [
+            'litros' => round((float) $conceptos->sum(fn ($c) => (float) ($c['cantidad'] ?? 0)) - (float) (clone $vales)->sum('litros'), 3),
+            'monto' => round((float) $factura->total + (float) $factura->isr - (float) (clone $vales)->sum('importe'), 2),
+            'producto' => filled($conceptos->first()['descripcion'] ?? null) ? mb_strtoupper(mb_substr(trim($conceptos->first()['descripcion']), 0, 40)) : null,
+        ];
+    }
+
+    /** Captura de vales: la unidad de combustibles (todas las áreas) o el área (las suyas); no en una bitácora cancelada. */
+    private function exigirCapturaVales(TramiteServicio $tramite): void
+    {
+        $this->autorizar($tramite);
+        abort_unless(auth()->user()->canAny(['combustible-cargar', 'combustible-create']), 403);
+        if ($tramite->estado === 'cancelado') {
+            throw ValidationException::withMessages(['vale' => 'La bitácora está cancelada.']);
+        }
+    }
+
+    /** Datos del vale; todos opcionales. Monto o precio se calculan si faltan y hay con qué; se liga al padrón vehicular. */
+    /** Al editar ($actual), lo que no se envía se queda como estaba. */
+    private function datosVale(Request $request, TramiteServicio $tramite, ?CombustibleCarga $actual = null): array
+    {
+        $v = $request->validate([
+            'vale' => 'nullable|string|max:40',
+            'numero_economico' => 'nullable|string|max:30',
+            'fecha_vale' => 'nullable|date',
+            'departamento' => 'nullable|string|max:200',
+            'conductor' => 'nullable|string|max:200',
+            'producto' => 'nullable|string|max:40',
+            'litros' => 'nullable|numeric|min:0',
+            'precio' => 'nullable|numeric|min:0',
+            'importe' => 'nullable|numeric|min:0',
+            'tramite_servicio_factura_id' => ['nullable', 'integer', fn ($a, $id, $falla) => $tramite->facturas()->whereKey($id)->exists() ?: $falla('Esa factura no es de esta bitácora.')],
+        ]);
+        if ($actual) {
+            foreach (array_keys(CombustibleCarga::CAMPOS_BITACORA) + [99 => 'tramite_servicio_factura_id'] as $campo) {
+                if (! $request->exists($campo)) {
+                    $v[$campo] = $campo === 'fecha_vale' ? $actual->fecha_vale?->toDateString() : $actual->{$campo};
+                }
+            }
+            // Cambiaron los litros y no el monto: el monto se recalcula con el precio.
+            if ($request->exists('litros') && isset($v['litros'], $v['precio']) && (float) $v['litros'] !== (float) $actual->litros
+                && (! $request->exists('importe') || (float) ($v['importe'] ?? 0) === (float) $actual->importe)) {
+                $v['importe'] = null;
+            }
+        }
+        $texto = fn ($c) => filled($v[$c] ?? null) ? mb_strtoupper(trim($v[$c])) : null;
+        $numero = $texto('numero_economico');
+        $litros = isset($v['litros']) ? (float) $v['litros'] : null;
+        $precio = isset($v['precio']) ? (float) $v['precio'] : null;
+        $importe = isset($v['importe']) ? (float) $v['importe'] : null;
+        if ($importe === null && $litros && $precio) {
+            $importe = round($litros * $precio, 2);
+        }
+        if ($precio === null && $litros && $importe) {
+            $precio = round($importe / $litros, 4);
+        }
+        $factura = filled($v['tramite_servicio_factura_id'] ?? null) ? $tramite->facturas()->find($v['tramite_servicio_factura_id']) : null;
+
+        return [
+            'vale' => $texto('vale'),
+            'numero_economico' => $numero,
+            'vehiculo_id' => $numero ? Vehiculo::where(DB::raw('UPPER(TRIM(numero_economico))'), $numero)->value('id') : null,
+            'fecha_vale' => $v['fecha_vale'] ?? null,
+            'departamento' => $texto('departamento'),
+            'conductor' => $texto('conductor'),
+            'producto' => $texto('producto'),
+            'litros' => $litros,
+            'precio' => $precio,
+            'importe' => $importe,
+            'tramite_servicio_factura_id' => $factura?->id,
+            'factura_folio' => $factura ? CombustibleCarga::normalizarFolio($factura->serieFolio()) : null,
+        ];
+    }
+
+    private function mensajeVale(CombustibleCarga $vale, string $accion): string
+    {
+        $faltan = $vale->faltantes();
+
+        return 'Vale '.($vale->vale ?? 'sin número')." {$accion}.".($faltan ? ' Le falta: '.implode(', ', $faltan).'; se puede completar en cualquier momento.' : '');
+    }
+
     /** Bitácora de una secretaría para auditoría, en Excel. */
     public function bitacoraExcel(TramiteServicio $tramite)
     {
         $this->autorizar($tramite);
         $tramite->load('unidadAdministrativa', 'lote');
         $filas = collect($this->filasBitacora($tramite))->map(fn ($t) => [
-            $t['fecha_ticket'] ? date('d/m/Y', strtotime($t['fecha_ticket'])) : null, $t['ticket'], $t['vale'], $t['numero_economico'], $t['placas'], $t['departamento'], $t['conductor'],
-            $t['producto'], $t['litros'], $t['precio'], $t['importe'], $t['factura_folio'], $t['uuid'],
+            $t['vale'], $t['numero_economico'], $t['placas'], ($t['fecha_vale'] ?? $t['fecha_ticket']) ? date('d/m/Y', strtotime($t['fecha_vale'] ?? $t['fecha_ticket'])) : null,
+            $t['departamento'], $t['conductor'], $t['producto'], $t['litros'], $t['precio'], $t['importe'], $t['factura_folio'], $t['uuid'],
+            $t['faltan'] ? implode(', ', $t['faltan']) : null,
         ]);
         $libro = ExcelTabla::libro(
             "Bitácora de combustible {$tramite->folio_completo}",
-            trim(($tramite->unidadAdministrativa?->clave ?? '').' '.($tramite->unidadAdministrativa?->nombre ?? '')).' · '.($tramite->lote?->periodo ?? '').' · '.($tramite->proveedor_nombre ?? 'Proveedor sin factura cargada'),
-            ['Fecha', 'Ticket', 'Vale', 'No. económico', 'Placas', 'Departamento', 'Nombre', 'Producto', 'Litros', 'Precio por litro', 'Importe', 'Factura', 'UUID'],
+            trim(($tramite->unidadAdministrativa?->clave ?? '').' '.($tramite->unidadAdministrativa?->nombre ?? '')).' · '.($tramite->lote?->periodo ?? $tramite->concepto).' · '.($tramite->proveedor_nombre ?? 'Proveedor sin factura cargada'),
+            ['No. de vale', 'No. económico', 'Placas', 'Fecha del vale', 'Departamento', 'Quien carga', 'Tipo', 'Litros', 'Precio', 'Monto', 'Factura', 'UUID', 'Datos faltantes'],
             $filas,
-            [9 => self::FORMATO_LITROS, 10 => '#,##0.0000', 11 => self::FORMATO_IMPORTE],
-            [9, 11],
-            [11, 10, 10, 13, 10, 28, 26, 11, 10, 11, 13, 11, 38],
+            [8 => self::FORMATO_LITROS, 9 => '#,##0.0000', 10 => self::FORMATO_IMPORTE],
+            [8, 10],
+            [11, 13, 10, 12, 28, 26, 11, 10, 11, 13, 11, 38, 30],
         );
 
         return $this->descargarExcel($libro, "bitacora_combustible_{$tramite->folio_completo}");
@@ -495,10 +681,11 @@ class CombustibleController extends Controller
 
     private function filasBitacora(TramiteServicio $tramite): array
     {
-        return $tramite->cargas()->with('vehiculo:id,placas,marca,linea', 'factura:id,uuid')->get()->map(fn (CombustibleCarga $c) => [
+        return $tramite->cargas()->with('vehiculo:id,placas,marca,linea', 'factura:id,uuid,serie,folio')->get()->map(fn (CombustibleCarga $c) => [
             'id' => $c->id,
             'fila' => $c->fila,
             'fecha_ticket' => $c->fecha_ticket?->toDateString(),
+            'fecha_vale' => $c->fecha_vale?->toDateString(),
             'ticket' => $c->ticket,
             'vale' => $c->vale,
             'numero_economico' => $c->numero_economico,
@@ -510,8 +697,11 @@ class CombustibleController extends Controller
             'litros' => $c->litros,
             'precio' => $c->precio,
             'importe' => $c->importe,
-            'factura_folio' => $c->factura_folio,
+            'factura_folio' => $c->factura?->serieFolio() ?? $c->factura_folio,
+            'factura_id' => $c->tramite_servicio_factura_id,
             'uuid' => $c->factura?->uuid,
+            // Datos de la bitácora que le faltan (alerta).
+            'faltan' => $c->faltantes(),
         ])->all();
     }
 

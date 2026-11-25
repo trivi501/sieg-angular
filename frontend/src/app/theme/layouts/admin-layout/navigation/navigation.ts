@@ -277,13 +277,7 @@ export const NavigationItems: NavigationItem[] = [
             url: '/combustible/bitacoras',
             permission: 'combustible-index'
           },
-          {
-            id: 'combustible',
-            title: 'Cargas del proveedor de combustible',
-            type: 'item',
-            url: '/combustible',
-            permission: ['combustible-cargar', 'combustible-validar']
-          },
+          // Ya no se sube el Excel del proveedor: los datos de los vales se capturan a mano en cada bitácora.
           {
             id: 'combustible-reporte',
             title: 'Consumo de combustible',

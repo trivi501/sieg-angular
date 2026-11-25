@@ -144,7 +144,7 @@ type Resultado = { archivo: string; ok: boolean; texto: string; aviso?: string |
                     <td class="text-end font-monospace">{{ litros(b.litros) }}</td>
                     <td class="text-end font-monospace">{{ money(b.importe) }}</td>
                     <td>
-                      <span class="badge {{ clase(b.estado) }}">{{ b.estado_texto }}</span>
+                      <span class="badge {{ clase(b.estado_clave) }}">{{ b.estado_texto }}</span>
                       @if (b.requisicion) {
                         <small class="d-block text-muted">{{ b.requisicion }}</small>
                       }

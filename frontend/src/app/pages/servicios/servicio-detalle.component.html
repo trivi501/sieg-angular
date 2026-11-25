@@ -7,7 +7,7 @@
       <a [routerLink]="regreso()" class="small text-muted">← {{ regreso() !== base ? 'Combustible ' + d.combustible?.periodo : nombre.lista }}</a>
       <h4 class="mb-1">
         {{ nombre.uno }} {{ t.folio }}
-        <span class="badge {{ clase(t.estado) }} align-middle">{{ t.estado_texto }}</span>
+        <span class="badge {{ clase(t.estado_clave) }} align-middle">{{ t.estado_texto }}</span>
       </h4>
       <p class="text-muted small mb-0">{{ t.unidad }} · capturó {{ t.capturo ?? '—' }} · {{ t.fecha | date: 'dd/MM/yyyy' }}</p>
     </div>
@@ -22,7 +22,8 @@
           class="btn"
           [class.btn-primary]="!t.suficiencia"
           [class.btn-outline-primary]="!!t.suficiencia"
-          [disabled]="ocupado()"
+          [disabled]="ocupado() || (revisaFacturas && revisadas().validadas < revisadas().total)"
+          [title]="revisaFacturas && revisadas().validadas < revisadas().total ? 'Primero valida cada factura' : ''"
           (click)="ejecutar('suficiencia')"
           [appAccion]="t.suficiencia ? 'Volver a validar suficiencia' : 'Validar suficiencia'"
           [conNombre]="true"
@@ -49,7 +50,8 @@
           icono="check"
         ></button>
       }
-      @if (d.puede.validar || d.puede.suficiencia) {
+      <!-- Combustible: el área genera sin que nadie más la valide; no hay "no validar" -->
+      @if ((d.puede.validar || d.puede.suficiencia) && !combustible) {
         <button type="button" class="btn btn-outline-danger" (click)="modo.set('rechazar')" appAccion="No validar (con observaciones)" icono="close"></button>
       }
       @if (d.puede.cancelar) {
@@ -117,7 +119,12 @@
       </div>
     } @else {
       <div class="alert alert-info py-2 small">
-        <b>Paso 1:</b> valida la suficiencia presupuestal. <b>Paso 2:</b> con suficiencia se habilita «Generar requisición, OC y CLC».
+        @if (revisaFacturas) {
+          <b>Paso 1:</b> valida cada factura (abajo, en cada una). <b>Paso 2:</b> valida la suficiencia presupuestal. <b>Paso 3:</b> con suficiencia se
+          habilita «Generar requisición, OC y CLC».
+        } @else {
+          <b>Paso 1:</b> valida la suficiencia presupuestal. <b>Paso 2:</b> con suficiencia se habilita «Generar requisición, OC y CLC».
+        }
       </div>
     }
   }
@@ -217,110 +224,196 @@
     </div>
   </div>
 
-  <!-- Combustible: facturas del Excel del proveedor, sus tickets y la bitácora para auditoría -->
+  <!-- Combustible: bitácora de vales. La unidad de combustibles sube los XML del área y captura o completa los vales en cualquier momento. -->
   @if (d.combustible; as c) {
     <div class="card">
       <div class="card-body">
         <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
           <div class="row g-3 small flex-grow-1">
-            <div class="col-6 col-md-3"><span class="text-muted d-block">Periodo</span><b>{{ c.periodo }}</b></div>
-            <div class="col-6 col-md-2"><span class="text-muted d-block">Tickets</span><b>{{ c.tickets }}</b></div>
-            <div class="col-6 col-md-3"><span class="text-muted d-block">Litros</span><b class="font-monospace">{{ litros(c.litros) }}</b></div>
-            <div class="col-6 col-md-3"><span class="text-muted d-block">Importe de los tickets</span><b class="font-monospace">{{ money(c.importe) }}</b></div>
+            <div class="col-6 col-md-2"><span class="text-muted d-block">Periodo</span><b>{{ c.periodo ?? '—' }}</b></div>
+            <div class="col-6 col-md-2"><span class="text-muted d-block">Vales</span><b>{{ c.tickets }}</b></div>
+            <div class="col-6 col-md-2"><span class="text-muted d-block">Litros</span><b class="font-monospace">{{ litros(c.litros) }}</b></div>
+            <div class="col-6 col-md-2"><span class="text-muted d-block">Monto de los vales</span><b class="font-monospace">{{ money(c.importe) }}</b></div>
+            <div class="col-6 col-md-2"><span class="text-muted d-block">Total de las facturas</span><b class="font-monospace">{{ money(c.total_facturas) }}</b></div>
+            <div class="col-6 col-md-2">
+              <span class="text-muted d-block">Diferencia</span>
+              <b class="font-monospace" [class.text-danger]="c.diferencia > 1 || c.diferencia < -1">{{ money(c.diferencia) }}</b>
+            </div>
           </div>
           <div class="d-flex gap-2">
-            <button type="button" class="btn btn-outline-secondary" (click)="alternarTickets()" [appAccion]="verTickets() ? 'Ocultar tickets' : 'Ver tickets'" icono="eye"></button>
-            <button type="button" class="btn btn-outline-success" (click)="bitacora('excel')" appAccion="Bitácora en Excel" icono="file-excel"></button>
+            <button type="button" class="btn btn-outline-success" (click)="bitacora('excel')" appAccion="Exportar a Excel" [conNombre]="true" icono="file-excel"></button>
             <button type="button" class="btn btn-outline-secondary" (click)="bitacora('pdf')" appAccion="Bitácora en PDF" icono="file-pdf"></button>
           </div>
         </div>
 
-        <h6 class="mt-3 mb-1">Facturas del Excel del proveedor ({{ c.facturas.length }})</h6>
-        <div class="table-responsive">
-          <table class="table table-sm align-middle mb-0">
-            <thead>
-              <tr>
-                <th>Factura</th>
-                <th>Fecha</th>
-                <th class="text-center">Tickets</th>
-                <th class="text-end">Litros</th>
-                <th class="text-end">Suma de tickets</th>
-                <th class="text-end">Total del XML</th>
-                <th class="text-end">Diferencia</th>
-              </tr>
-            </thead>
-            <tbody>
-              @for (f of c.facturas; track f.folio) {
-                <tr>
-                  <td class="fw-semibold">{{ f.folio }}</td>
-                  <td>{{ f.fecha_factura | date: 'dd/MM/yyyy' }}</td>
-                  <td class="text-center">{{ f.tickets }}</td>
-                  <td class="text-end font-monospace">{{ litros(f.litros) }}</td>
-                  <td class="text-end font-monospace">{{ money(f.importe) }}</td>
-                  <td class="text-end font-monospace">
-                    @if (f.factura_id) {
-                      {{ money(f.total_xml) }}
-                    } @else {
-                      <span class="badge bg-light-warning text-warning">Falta el XML</span>
-                    }
-                  </td>
-                  <td class="text-end font-monospace" [class.text-danger]="f.diferencia !== null && (f.diferencia > 1 || f.diferencia < -1)">
-                    {{ f.diferencia === null ? '—' : money(f.diferencia) }}
-                  </td>
-                </tr>
-              }
-            </tbody>
-          </table>
-        </div>
+        <!-- Alertas por falta de llenado -->
+        @if (c.incompletos) {
+          <div class="alert alert-warning py-2 small mb-2">
+            ⚠ <b>{{ c.incompletos }} vale(s) con datos faltantes</b> (marcados en rojo). Se pueden completar en cualquier momento, aun después de generar la CLC.
+          </div>
+        }
+        @if (c.tickets && (c.diferencia > 1 || c.diferencia < -1)) {
+          <div class="alert alert-info py-2 small mb-2">
+            La suma de los vales ({{ money(c.importe) }}) no coincide con el total de las facturas ({{ money(c.total_facturas) }}): diferencia de {{ money(c.diferencia) }}.
+          </div>
+        }
 
-        @if (verTickets()) {
-          <h6 class="mt-3 mb-1">Tickets</h6>
-          @if (tickets(); as ts) {
-            <div class="table-responsive" style="max-height: 420px">
-              <table class="table table-sm table-striped align-middle mb-0">
-                <thead class="sticky-top bg-body">
+        <!-- Conceptos de cada factura: se despliegan como vales para llenar lo que falte -->
+        @if (c.por_factura.length) {
+          <h6 class="mt-2 mb-1">Conceptos de las facturas</h6>
+          @for (pf of c.por_factura; track pf.id) {
+            <div class="border rounded p-2 mb-2 small">
+              <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-1">
+                <span>
+                  <b>Factura {{ pf.folio }}</b> · {{ litros(pf.litros_xml) }} L · {{ money(pf.monto_xml) }}
+                  · <span class="text-muted">{{ pf.vales }} vale(s)</span>
+                  @if (pf.vales && (pf.pendiente_litros > 0.0005 || pf.pendiente_monto > 0.005)) {
+                    <span class="badge bg-light-warning text-warning ms-1">Por asignar: {{ litros(pf.pendiente_litros) }} L · {{ money(pf.pendiente_monto) }}</span>
+                  } @else if (pf.vales) {
+                    <span class="badge bg-light-success text-success ms-1">Asignada completa</span>
+                  } @else {
+                    <span class="badge bg-light-danger text-danger ms-1">Sin vales</span>
+                  }
+                </span>
+                @if (c.capturar_vales) {
+                  @if (!pf.vales) {
+                    <button type="button" class="btn btn-sm btn-primary" [disabled]="ocupado()" (click)="desplegarConceptos(pf.id)" appAccion="Desplegar conceptos" [conNombre]="true" icono="plus"></button>
+                  } @else if (pf.pendiente_litros > 0.0005 || pf.pendiente_monto > 0.005) {
+                    <button type="button" class="btn btn-sm btn-outline-primary" [disabled]="ocupado()" (click)="valePendiente(pf.id)" appAccion="Agregar vale con lo pendiente" [conNombre]="true" icono="plus"></button>
+                  }
+                }
+              </div>
+              <table class="table table-sm mb-0">
+                <thead>
                   <tr>
-                    <th>Fecha</th>
-                    <th>Ticket</th>
-                    <th>Vale</th>
-                    <th>No. eco.</th>
-                    <th>Departamento</th>
-                    <th>Nombre</th>
-                    <th>Producto</th>
+                    <th>Concepto</th>
+                    <th>Unidad</th>
                     <th class="text-end">Litros</th>
-                    <th class="text-end">Precio</th>
-                    <th class="text-end">Importe</th>
-                    <th>Factura</th>
+                    <th class="text-end">Precio (sin IVA)</th>
+                    <th class="text-end">Monto (con IVA)</th>
                   </tr>
                 </thead>
                 <tbody>
-                  @for (tk of ts; track tk.id) {
+                  @for (cc of pf.conceptos; track $index) {
                     <tr>
-                      <td class="text-nowrap">{{ tk.fecha_ticket ? (tk.fecha_ticket | date: 'dd/MM/yyyy') : '—' }}</td>
-                      <td>{{ tk.ticket }}</td>
-                      <td>{{ tk.vale }}</td>
-                      <td [title]="tk.placas ? 'Placas ' + tk.placas : tk.vehiculo_id ? '' : 'No está en el padrón vehicular'">
-                        {{ tk.numero_economico ?? '—' }}
-                        @if (tk.vehiculo_id) {
-                          <span class="text-success">●</span>
-                        }
-                      </td>
-                      <td>{{ tk.departamento }}</td>
-                      <td>{{ tk.conductor }}</td>
-                      <td>{{ tk.producto }}</td>
-                      <td class="text-end font-monospace">{{ litros(tk.litros) }}</td>
-                      <td class="text-end font-monospace">{{ tk.precio !== null ? money(tk.precio) : '—' }}</td>
-                      <td class="text-end font-monospace">{{ money(tk.importe) }}</td>
-                      <td>{{ tk.factura_folio }}</td>
+                      <td>{{ cc.descripcion }}</td>
+                      <td>{{ cc.unidad }}</td>
+                      <td class="text-end font-monospace">{{ litros(cc.litros) }}</td>
+                      <td class="text-end font-monospace">{{ money(cc.precio) }}</td>
+                      <td class="text-end font-monospace">{{ money(cc.monto) }}</td>
                     </tr>
                   }
                 </tbody>
               </table>
             </div>
-          } @else {
-            <p class="text-muted small">Cargando tickets…</p>
           }
+          <p class="small text-muted mb-2">
+            «Desplegar conceptos» crea un vale por concepto con tipo, litros, precio y monto de la factura; abajo llena no. de vale, no. económico, fecha,
+            departamento y quien carga. Si un concepto cubre varias cargas, baja los litros del vale y usa «Agregar vale con lo pendiente».
+          </p>
         }
+
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0 tabla-vales">
+            <thead>
+              <tr>
+                <th>No. de vale</th>
+                <th>No. económico</th>
+                <th>Fecha del vale</th>
+                <th>Departamento</th>
+                <th>Quien carga</th>
+                <th>Tipo</th>
+                <th class="text-end">Litros</th>
+                <th class="text-end">Precio</th>
+                <th class="text-end">Monto</th>
+                <th>Factura</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              @if (c.capturar_vales) {
+                <!-- Nuevo vale: se guarda aunque falten datos -->
+                <tr class="table-light">
+                  <td><input class="form-control form-control-sm" maxlength="40" placeholder="Vale" [(ngModel)]="nuevoVale.vale" /></td>
+                  <td><input class="form-control form-control-sm" maxlength="30" placeholder="Económico" [(ngModel)]="nuevoVale.numero_economico" /></td>
+                  <td><input type="date" class="form-control form-control-sm" [(ngModel)]="nuevoVale.fecha_vale" /></td>
+                  <td><input class="form-control form-control-sm" maxlength="200" [(ngModel)]="nuevoVale.departamento" /></td>
+                  <td><input class="form-control form-control-sm" maxlength="200" [(ngModel)]="nuevoVale.conductor" /></td>
+                  <td><input class="form-control form-control-sm" maxlength="40" list="tiposCombustible" [(ngModel)]="nuevoVale.producto" /></td>
+                  <td><input type="number" step="0.001" min="0" class="form-control form-control-sm text-end" [(ngModel)]="nuevoVale.litros" /></td>
+                  <td><input type="number" step="0.0001" min="0" class="form-control form-control-sm text-end" [(ngModel)]="nuevoVale.precio" /></td>
+                  <td><input type="number" step="0.01" min="0" class="form-control form-control-sm text-end" placeholder="litros × precio" [(ngModel)]="nuevoVale.importe" /></td>
+                  <td>
+                    <select class="form-select form-select-sm sin-busqueda" [(ngModel)]="nuevoVale.tramite_servicio_factura_id">
+                      <option [ngValue]="null">—</option>
+                      @for (f of d.facturas; track f.id) {
+                        <option [ngValue]="f.id">{{ f.serie_folio ?? f.uuid }}</option>
+                      }
+                    </select>
+                  </td>
+                  <td class="text-nowrap">
+                    <button type="button" class="btn btn-sm btn-primary" [disabled]="ocupado()" (click)="agregarVale()" appAccion="Agregar vale" icono="plus"></button>
+                  </td>
+                </tr>
+              }
+              @for (v of tickets() ?? []; track v.id) {
+                @if (c.capturar_vales && edicion[v.id]; as e) {
+                  <tr [class.table-warning]="v.faltan.length">
+                    <td><input class="form-control form-control-sm" maxlength="40" [class.is-invalid]="falta(v, 'vale')" [(ngModel)]="e.vale" /></td>
+                    <td><input class="form-control form-control-sm" maxlength="30" [class.is-invalid]="falta(v, 'numero_economico')" [(ngModel)]="e.numero_economico" /></td>
+                    <td><input type="date" class="form-control form-control-sm" [class.is-invalid]="falta(v, 'fecha_vale')" [(ngModel)]="e.fecha_vale" /></td>
+                    <td><input class="form-control form-control-sm" maxlength="200" [class.is-invalid]="falta(v, 'departamento')" [(ngModel)]="e.departamento" /></td>
+                    <td><input class="form-control form-control-sm" maxlength="200" [class.is-invalid]="falta(v, 'conductor')" [(ngModel)]="e.conductor" /></td>
+                    <td><input class="form-control form-control-sm" maxlength="40" list="tiposCombustible" [class.is-invalid]="falta(v, 'producto')" [(ngModel)]="e.producto" /></td>
+                    <td><input type="number" step="0.001" min="0" class="form-control form-control-sm text-end" [class.is-invalid]="falta(v, 'litros')" [(ngModel)]="e.litros" /></td>
+                    <td><input type="number" step="0.0001" min="0" class="form-control form-control-sm text-end" [class.is-invalid]="falta(v, 'precio')" [(ngModel)]="e.precio" /></td>
+                    <td><input type="number" step="0.01" min="0" class="form-control form-control-sm text-end" [class.is-invalid]="falta(v, 'importe')" [(ngModel)]="e.importe" /></td>
+                    <td>
+                      <select class="form-select form-select-sm sin-busqueda" [(ngModel)]="e.tramite_servicio_factura_id">
+                        <option [ngValue]="null">—</option>
+                        @for (f of d.facturas; track f.id) {
+                          <option [ngValue]="f.id">{{ f.serie_folio ?? f.uuid }}</option>
+                        }
+                      </select>
+                    </td>
+                    <td class="text-nowrap">
+                      <button type="button" class="btn btn-sm btn-outline-primary" [disabled]="ocupado()" (click)="guardarVale(v)" appAccion="Guardar vale" icono="check"></button>
+                      <button type="button" class="btn btn-sm btn-outline-danger" [disabled]="ocupado()" (click)="quitarVale(v)" appAccion="Quitar vale" icono="delete"></button>
+                    </td>
+                  </tr>
+                } @else {
+                  <tr [class.table-warning]="v.faltan.length" [title]="v.faltan.length ? 'Falta: ' + v.faltan.join(', ') : ''">
+                    <td [class.text-danger]="falta(v, 'vale')">{{ v.vale ?? 'Falta' }}</td>
+                    <td [class.text-danger]="falta(v, 'numero_economico')">
+                      {{ v.numero_economico ?? 'Falta' }}
+                      @if (v.vehiculo_id) {
+                        <span class="text-success" [title]="v.placas ? 'Placas ' + v.placas : ''">●</span>
+                      }
+                    </td>
+                    <td [class.text-danger]="falta(v, 'fecha_vale')">{{ v.fecha_vale ? (v.fecha_vale | date: 'dd/MM/yyyy') : 'Falta' }}</td>
+                    <td [class.text-danger]="falta(v, 'departamento')">{{ v.departamento ?? 'Falta' }}</td>
+                    <td [class.text-danger]="falta(v, 'conductor')">{{ v.conductor ?? 'Falta' }}</td>
+                    <td [class.text-danger]="falta(v, 'producto')">{{ v.producto ?? 'Falta' }}</td>
+                    <td class="text-end font-monospace" [class.text-danger]="falta(v, 'litros')">{{ v.litros !== null ? litros(v.litros) : 'Falta' }}</td>
+                    <td class="text-end font-monospace" [class.text-danger]="falta(v, 'precio')">{{ v.precio !== null ? money(v.precio) : 'Falta' }}</td>
+                    <td class="text-end font-monospace" [class.text-danger]="falta(v, 'importe')">{{ v.importe !== null ? money(v.importe) : 'Falta' }}</td>
+                    <td>{{ v.factura_folio ?? '—' }}</td>
+                    <td></td>
+                  </tr>
+                }
+              } @empty {
+                <tr>
+                  <td colspan="11" class="text-center text-muted py-3">{{ tickets() ? 'Aún no hay vales en la bitácora.' : 'Cargando vales…' }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+          <datalist id="tiposCombustible">
+            <option value="MAGNA"></option>
+            <option value="PREMIUM"></option>
+            <option value="DIÉSEL"></option>
+          </datalist>
+        </div>
       </div>
     </div>
 
@@ -426,8 +519,8 @@
   @if (d.puede.editar) {
     <p class="small text-muted">
       @if (combustible) {
-        Solo las facturas del Excel del proveedor de esta bitácora (se ligan por serie y folio), vigentes en el SAT y a nombre del Ayuntamiento. También se pueden
-        subir todas las del mes juntas desde la carga del Excel: cada una va sola a su bitácora.
+        Las facturas (XML) del proveedor de combustible de esta área, vigentes en el SAT y a nombre del Ayuntamiento. Con los XML, asígnales el presupuesto,
+        valida la suficiencia y genera la requisición, la orden de compra y la CLC. Los datos de los vales se llenan arriba en cualquier momento.
       } @else if (fondo) {
         Facturas de ingreso a nombre del Ayuntamiento, vigentes en el SAT, de cualquier proveedor (registrado o no)
         @if (viatico) {
@@ -443,21 +536,23 @@
     </p>
   }
 
+  <!-- Fondo, viáticos y servicios: avance de la revisión factura por factura -->
+  @if (revisaFacturas && d.facturas.length && (d.puede.revisar || revisadas().validadas || revisadas().rechazadas)) {
+    @let r = revisadas();
+    <div class="d-flex align-items-center gap-2 small mb-2">
+      <span class="text-muted text-nowrap">{{ fondo ? 'Revisión de Control Presupuestal' : 'Revisión de las facturas' }}</span>
+      <div class="progress flex-grow-1" style="height: 8px">
+        <div class="progress-bar bg-success" [style.width.%]="(100 * r.validadas) / r.total"></div>
+        <div class="progress-bar bg-danger" [style.width.%]="(100 * r.rechazadas) / r.total"></div>
+      </div>
+      <span class="text-nowrap">
+        <b>{{ r.validadas }}</b> de {{ r.total }} validadas{{ r.rechazadas ? ' · ' + r.rechazadas + ' no validadas' : '' }}
+      </span>
+    </div>
+  }
+
   @if (fondo) {
     <!-- Fondo: una fila por factura; cada una se abre en su ventana para clasificarla o revisarla -->
-    @if (d.facturas.length && (d.puede.revisar || revisadas().validadas || revisadas().rechazadas)) {
-      @let r = revisadas();
-      <div class="d-flex align-items-center gap-2 small mb-2">
-        <span class="text-muted text-nowrap">Revisión de Control Presupuestal</span>
-        <div class="progress flex-grow-1" style="height: 8px">
-          <div class="progress-bar bg-success" [style.width.%]="(100 * r.validadas) / r.total"></div>
-          <div class="progress-bar bg-danger" [style.width.%]="(100 * r.rechazadas) / r.total"></div>
-        </div>
-        <span class="text-nowrap">
-          <b>{{ r.validadas }}</b> de {{ r.total }} validadas{{ r.rechazadas ? ' · ' + r.rechazadas + ' no validadas' : '' }}
-        </span>
-      </div>
-    }
     @if (d.facturas.length) {
       <div class="card">
         <div class="table-responsive">
@@ -514,16 +609,21 @@
                     }
                   </td>
                   <td class="text-end text-nowrap">
-                    <button
-                      type="button"
-                      class="btn btn-sm"
-                      [class.btn-primary]="(d.puede.editar && !f.clasificada) || (d.puede.revisar && !f.revision)"
-                      [class.btn-outline-primary]="!((d.puede.editar && !f.clasificada) || (d.puede.revisar && !f.revision))"
-                      (click)="$event.stopPropagation(); abrirFactura(f)"
-                      [appAccion]="d.puede.revisar ? 'Revisar' : d.puede.editar ? 'Clasificar' : 'Ver'"
-                      [conNombre]="true"
-                      [icono]="d.puede.revisar ? 'safety-certificate' : d.puede.editar ? 'edit' : 'eye'"
-                    ></button>
+                    @if (f.solicitar_revision) {
+                      <!-- No validada: el área la corrige o cancela y vuelve a solicitar su revisión -->
+                      <button type="button" class="btn btn-sm btn-danger" (click)="$event.stopPropagation(); abrirFactura(f)" appAccion="Corregir" [conNombre]="true" icono="edit"></button>
+                    } @else {
+                      <button
+                        type="button"
+                        class="btn btn-sm"
+                        [class.btn-primary]="(d.puede.editar && !f.clasificada) || (d.puede.revisar && !f.revision)"
+                        [class.btn-outline-primary]="!((d.puede.editar && !f.clasificada) || (d.puede.revisar && !f.revision))"
+                        (click)="$event.stopPropagation(); abrirFactura(f)"
+                        [appAccion]="d.puede.revisar ? 'Revisar' : d.puede.editar ? 'Clasificar' : 'Ver'"
+                        [conNombre]="true"
+                        [icono]="d.puede.revisar ? 'safety-certificate' : d.puede.editar ? 'edit' : 'eye'"
+                      ></button>
+                    }
                   </td>
                 </tr>
               }
@@ -536,12 +636,15 @@
     }
   } @else {
   @for (f of d.facturas; track f.id) {
-    <div class="card mb-2" [class.border-warning]="d.puede.editar && !f.clasificada">
+    <div class="card mb-2" [class.border-warning]="f.editable && !f.clasificada" [class.border-danger]="f.revision === 'rechazada'">
       <div class="card-body py-2">
         <div class="row g-2 small align-items-center">
           <div class="col-md-4">
             <b>{{ f.serie_folio ?? 'Sin folio' }}</b>
             <span class="badge ms-1" [class.bg-light-success]="f.sat_estado === 'Vigente'" [class.text-success]="f.sat_estado === 'Vigente'" [class.bg-light-danger]="f.sat_estado !== 'Vigente'" [class.text-danger]="f.sat_estado !== 'Vigente'">SAT: {{ f.sat_estado ?? '—' }}</span>
+            @if (revisaFacturas && (f.revision || t.estado === 'por_validar')) {
+              <span class="badge ms-1 {{ claseRevision(f.revision) }}">{{ f.revision_texto }}</span>
+            }
             <span class="d-block uuid text-muted">{{ f.uuid }}</span>
             <span class="d-block text-muted">{{ f.fecha | date: 'dd/MM/yyyy' }} · {{ f.emisor }}</span>
           </div>
@@ -558,17 +661,34 @@
             @if (f.pdf) {
               <button type="button" class="btn btn-sm btn-outline-secondary" (click)="pdf(f)" appAccion="Ver PDF" icono="file-pdf"></button>
             }
-            @if (d.puede.editar) {
+            @if (f.editable) {
               <label class="btn btn-sm mb-0" [class.btn-outline-primary]="!f.pdf" [class.btn-outline-secondary]="f.pdf" [title]="f.pdf ? 'Sustituir el PDF' : 'Subir el PDF de la factura'">
                 <input type="file" class="d-none" accept=".pdf,application/pdf" (change)="subirPdf(f, $event)" />
                 {{ f.pdf ? 'Cambiar PDF' : 'Subir PDF' }}
               </label>
             }
-            @if (d.puede.editar) {
-              <button type="button" class="btn btn-sm btn-outline-danger" (click)="quitar(f)" appAccion="Quitar factura" icono="delete"></button>
+            @if (f.solicitar_revision) {
+              <label class="btn btn-sm btn-outline-secondary mb-0" [class.disabled]="ocupado()" title="Sube otro XML en lugar de este (la factura actual se quita si el nuevo pasa)">
+                <input type="file" class="d-none" accept=".xml,text/xml,application/xml" (change)="sustituirXml(f, $event)" [disabled]="ocupado()" />
+                Sustituir XML
+              </label>
+            }
+            @if (f.editable) {
+              <button type="button" class="btn btn-sm btn-outline-danger" (click)="quitar(f)" [appAccion]="f.solicitar_revision ? 'Cancelar factura' : 'Quitar factura'" icono="delete"></button>
             }
           </div>
         </div>
+
+        <!-- Revisión de quien valida: observación de la no validada -->
+        @if (f.revision === 'rechazada') {
+          <div class="alert alert-danger py-1 px-2 small mt-2 mb-0">
+            <b>No validada</b>{{ f.revisada_por ? ' por ' + f.revisada_por : '' }}{{ f.revisada_at ? ' el ' + (f.revisada_at | date: 'dd/MM/yyyy HH:mm') : '' }}:
+            {{ f.revision_observaciones }}
+            @if (f.solicitar_revision) {
+              <span class="d-block">Corrígela (clasificación, XML o PDF) y vuelve a solicitar su revisión, o cancélala.</span>
+            }
+          </div>
+        }
 
         <!-- Contenido: artículos y montos -->
         @if (abiertas().has(f.id)) {
@@ -601,7 +721,7 @@
         }
 
         <!-- Clasificación (servicio): partida / proyecto / fuente / concepto de toda la factura -->
-        @if (d.puede.editar) {
+        @if (f.editable) {
           <div class="row g-2 mt-1 align-items-end">
             <div class="col-md-3">
               <label class="form-label small mb-0">Partida</label>
@@ -637,6 +757,20 @@
             <div class="col-md-1">
               <button type="button" class="btn btn-sm btn-primary w-100" (click)="guardarClasificacion(f)" appAccion="Guardar clasificación" icono="check"></button>
             </div>
+            @if (f.solicitar_revision) {
+              <div class="col-12 text-end">
+                <button
+                  type="button"
+                  class="btn btn-sm btn-success"
+                  [disabled]="ocupado() || !f.clasificada"
+                  [title]="f.clasificada ? '' : 'Primero guarda la clasificación completa'"
+                  (click)="solicitarRevision(f)"
+                  appAccion="Volver a solicitar revisión"
+                  [conNombre]="true"
+                  icono="send"
+                ></button>
+              </div>
+            }
             @if (erroresFactura()[f.id]) {
               <div class="col-12 text-danger small">{{ erroresFactura()[f.id] }}</div>
             }
@@ -646,6 +780,30 @@
             <span class="text-muted">Partida</span> {{ f.partida ?? '—' }} {{ f.nombre_partida ? '— ' + f.nombre_partida : '' }} ·
             <span class="text-muted">Proyecto</span> {{ f.proyecto ?? '—' }} · <span class="text-muted">Fuente</span> {{ f.fuente ?? '—' }} ·
             <span class="text-muted">Concepto</span> {{ f.concepto ?? '—' }}
+          </div>
+        }
+
+        <!-- Quien valida: valida o no cada factura (como en el fondo revolvente) -->
+        @if (d.puede.revisar && revisaFacturas) {
+          <div class="row g-2 mt-1 align-items-center">
+            <div class="col">
+              <input
+                class="form-control form-control-sm"
+                maxlength="2000"
+                placeholder="Observación para el área (obligatoria si no se valida)"
+                [(ngModel)]="observacionTarjeta[f.id]"
+              />
+            </div>
+            <div class="col-auto d-flex gap-1">
+              @if (f.revision) {
+                <button type="button" class="btn btn-sm btn-outline-secondary" [disabled]="ocupado()" (click)="revisarTarjeta(f, 'pendiente')">Regresar a por revisar</button>
+              }
+              <button type="button" class="btn btn-sm btn-outline-danger" [disabled]="ocupado()" (click)="revisarTarjeta(f, 'rechazada')" appAccion="No validar" [conNombre]="true" icono="close"></button>
+              <button type="button" class="btn btn-sm btn-success" [disabled]="ocupado() || f.revision === 'validada'" (click)="revisarTarjeta(f, 'validada')" appAccion="Validar" [conNombre]="true" icono="check"></button>
+            </div>
+            @if (erroresFactura()[f.id] && !f.editable) {
+              <div class="col-12 text-danger small">{{ erroresFactura()[f.id] }}</div>
+            }
           </div>
         }
       </div>
@@ -664,7 +822,7 @@
   @if (d(); as d) {
     @if (enVentana(); as f) {
       @let i = posicion();
-      @let editar = d.puede.editar;
+      @let editar = f.editable;
       <div class="modal-header ventana-factura">
         <div class="d-flex align-items-center gap-3 min-w-0">
           <div class="avtar avtar-s bg-light-primary text-primary flex-shrink-0 fw-bold">{{ i + 1 }}</div>
@@ -695,7 +853,11 @@
           <div class="alert alert-danger py-2 small">
             <b>No validada</b>{{ f.revisada_por ? ' por ' + f.revisada_por : '' }}{{ f.revisada_at ? ' el ' + (f.revisada_at | date: 'dd/MM/yyyy HH:mm') : '' }}:
             {{ f.revision_observaciones }}
-            @if (editar) {
+            @if (f.solicitar_revision) {
+              <span class="d-block mt-1">
+                Corrígela (clasifícala de nuevo, sustituye su XML o su PDF) y después <b>vuelve a solicitar su revisión</b>; o cancélala si no va.
+              </span>
+            } @else if (editar) {
               <span class="d-block mt-1">Corrígela (vuelve a clasificarla o sustituye su XML) o quítala del fondo.</span>
             }
           </div>
@@ -858,11 +1020,18 @@
         @if (editar) {
           <div class="d-flex flex-wrap gap-2 align-items-center">
             @if (confirmarQuitar()) {
-              <span class="small text-danger">¿Quitar esta factura del fondo?</span>
-              <button type="button" class="btn btn-danger" (click)="quitar(f, true)">Sí, quitarla</button>
+              <span class="small text-danger">{{ f.solicitar_revision ? '¿Cancelar esta factura? Se quita del trámite.' : '¿Quitar esta factura del fondo?' }}</span>
+              <button type="button" class="btn btn-danger" (click)="quitar(f, true)">{{ f.solicitar_revision ? 'Sí, cancelarla' : 'Sí, quitarla' }}</button>
               <button type="button" class="btn btn-outline-secondary" (click)="confirmarQuitar.set(false)">No</button>
             } @else {
-              <button type="button" class="btn btn-outline-danger" (click)="confirmarQuitar.set(true)" appAccion="Eliminar factura" [conNombre]="true" icono="delete"></button>
+              <button
+                type="button"
+                class="btn btn-outline-danger"
+                (click)="confirmarQuitar.set(true)"
+                [appAccion]="f.solicitar_revision ? 'Cancelar factura' : 'Eliminar factura'"
+                [conNombre]="true"
+                icono="delete"
+              ></button>
               <label class="btn btn-outline-secondary mb-0" [class.disabled]="ocupado()" title="Sube otro XML en lugar de este (la factura actual se quita si el nuevo pasa)">
                 <input type="file" class="d-none" accept=".xml,text/xml,application/xml" (change)="sustituirXml(f, $event)" [disabled]="ocupado()" />
                 {{ ocupado() ? 'Verificando en el SAT…' : 'Sustituir XML' }}
@@ -872,7 +1041,21 @@
                 {{ f.pdf ? 'Cambiar PDF' : 'Subir PDF' }}
               </label>
               <button type="button" class="btn btn-outline-primary" [disabled]="ocupado()" (click)="guardarClasificacion(f)">Guardar</button>
-              <button type="button" class="btn btn-primary" [disabled]="ocupado()" (click)="guardarClasificacion(f, true)" appAccion="Guardar y siguiente" [conNombre]="true" icono="check"></button>
+              @if (f.solicitar_revision) {
+                <!-- Ya corregida: regresa a la revisión de Control Presupuestal -->
+                <button
+                  type="button"
+                  class="btn btn-success"
+                  [disabled]="ocupado() || !f.clasificada"
+                  [title]="f.clasificada ? '' : 'Primero guarda la clasificación completa'"
+                  (click)="solicitarRevision(f)"
+                  appAccion="Volver a solicitar revisión"
+                  [conNombre]="true"
+                  icono="send"
+                ></button>
+              } @else {
+                <button type="button" class="btn btn-primary" [disabled]="ocupado()" (click)="guardarClasificacion(f, true)" appAccion="Guardar y siguiente" [conNombre]="true" icono="check"></button>
+              }
             }
           </div>
         } @else if (d.puede.revisar) {

@@ -21,7 +21,7 @@ interface Panel {
     en_tramite: { cantidad: number; importe: number };
     por_area: { area: string; nombre: string; cantidad: number; importe: number }[];
     facturas_sin_clc: { cantidad: number; importe: number };
-    tramites_por_validar: { tipo: string; nombre: string; cantidad: number }[];
+    tramites_por_validar: { tipo: string; nombre: string; cantidad: number; falta_generar: number }[];
   } | null;
   pagos: {
     mes: { nombre: string; cantidad: number; importe: number };

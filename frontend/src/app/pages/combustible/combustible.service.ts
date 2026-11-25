@@ -3,7 +3,7 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 
 import { environment } from 'src/environments/environment';
 import { Paginado } from 'src/app/core/api';
-import { EstadoTramite } from '../servicios/servicios.service';
+import { EstadoClaveTramite, EstadoTramite } from '../servicios/servicios.service';
 
 /** Una carga del Excel del proveedor (una hoja): de ella salen las bitácoras, una por secretaría. */
 export interface LoteCombustible {
@@ -70,6 +70,7 @@ export interface BitacoraLote {
   folio: string;
   unidad: string | null;
   estado: EstadoTramite;
+  estado_clave: EstadoClaveTramite;
   estado_texto: string;
   tickets: number;
   litros: number;
@@ -93,6 +94,27 @@ export interface ResumenCombustible {
   tickets: number;
   litros: number;
   importe: number;
+  /** Alertas: vales con datos faltantes y diferencia entre el total de las facturas y los vales. */
+  incompletos: number;
+  total_facturas: number;
+  diferencia: number;
+  /** Datos de la bitácora de cada vale (campo → nombre). */
+  campos: Record<string, string>;
+  /** Puede capturar o completar vales (en cualquier momento, salvo cancelada). */
+  capturar_vales: boolean;
+  /** Conceptos de cada factura (para desplegarlos como vales) y lo que falta de asignar en vales. */
+  por_factura: {
+    id: number;
+    folio: string;
+    conceptos: { descripcion: string | null; unidad: string | null; litros: number; precio: number; monto: number }[];
+    vales: number;
+    litros_xml: number;
+    monto_xml: number;
+    litros_vales: number;
+    monto_vales: number;
+    pendiente_litros: number;
+    pendiente_monto: number;
+  }[];
   facturas: {
     folio: string;
     fecha_factura: string | null;
@@ -107,8 +129,9 @@ export interface ResumenCombustible {
 
 export interface TicketCombustible {
   id: number;
-  fila: number;
+  fila: number | null;
   fecha_ticket: string | null;
+  fecha_vale: string | null;
   ticket: string | null;
   vale: string | null;
   numero_economico: string | null;
@@ -117,11 +140,28 @@ export interface TicketCombustible {
   departamento: string | null;
   conductor: string | null;
   producto: string | null;
-  litros: number;
+  litros: number | null;
   precio: number | null;
-  importe: number;
-  factura_folio: string;
+  importe: number | null;
+  factura_folio: string | null;
+  factura_id: number | null;
   uuid: string | null;
+  /** Datos de la bitácora que le faltan (alerta). */
+  faltan: string[];
+}
+
+/** Datos de un vale al capturarlo o completarlo (todos opcionales). */
+export interface DatosVale {
+  vale: string | null;
+  numero_economico: string | null;
+  fecha_vale: string | null;
+  departamento: string | null;
+  conductor: string | null;
+  producto: string | null;
+  litros: number | null;
+  precio: number | null;
+  importe: number | null;
+  tramite_servicio_factura_id: number | null;
 }
 
 export type Agrupacion = 'secretaria' | 'vehiculo' | 'mes' | 'producto';
@@ -186,6 +226,33 @@ export class CombustibleService {
 
   eliminarLote(id: number) {
     return this.http.delete<Mensaje>(`${this.api}/lotes/${id}`);
+  }
+
+  /** Secretarías para crear una bitácora (todas para la unidad de combustibles). */
+  unidades() {
+    return this.http.get<{ unidades: { id: number; clave: string; nombre: string }[]; unidadDefault: number | null }>(`${this.api}/unidades`);
+  }
+
+  /** Despliega los conceptos de una factura como vales (tipo, litros, precio y monto del XML). */
+  desplegarConceptos(bitacora: number, factura: number) {
+    return this.http.post<Mensaje>(`${this.api}/${bitacora}/facturas/${factura}/desplegar`, {});
+  }
+
+  /** Agrega un vale con lo que falta de asignar de la factura. */
+  valePendiente(bitacora: number, factura: number) {
+    return this.http.post<Mensaje>(`${this.api}/${bitacora}/facturas/${factura}/vale-pendiente`, {});
+  }
+
+  agregarVale(bitacora: number, datos: DatosVale) {
+    return this.http.post<Mensaje>(`${this.api}/${bitacora}/vales`, datos);
+  }
+
+  actualizarVale(bitacora: number, vale: number, datos: DatosVale) {
+    return this.http.put<Mensaje>(`${this.api}/${bitacora}/vales/${vale}`, datos);
+  }
+
+  quitarVale(bitacora: number, vale: number) {
+    return this.http.delete<Mensaje>(`${this.api}/${bitacora}/vales/${vale}`);
   }
 
   tickets(bitacora: number) {

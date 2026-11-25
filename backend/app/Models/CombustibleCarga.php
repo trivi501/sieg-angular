@@ -4,9 +4,25 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-/** Un ticket de combustible del Excel del proveedor, en la bitácora de su secretaría y ligado a su factura (XML). */
+/**
+ * Un vale de combustible de la bitácora de una secretaría, ligado (si se sabe) a su factura (XML). Lo captura la
+ * unidad de combustibles en cualquier momento, o vino del Excel del proveedor (método anterior).
+ */
 class CombustibleCarga extends Model
 {
+    /** Datos que debe tener cada vale para la bitácora; los que falten se avisan. */
+    public const CAMPOS_BITACORA = [
+        'vale' => 'No. de vale',
+        'numero_economico' => 'No. económico',
+        'fecha_vale' => 'Fecha del vale',
+        'departamento' => 'Departamento',
+        'conductor' => 'Quien carga',
+        'producto' => 'Tipo',
+        'litros' => 'Litros',
+        'precio' => 'Precio',
+        'importe' => 'Monto',
+    ];
+
     protected $table = 'combustible_cargas';
 
     protected $fillable = [
@@ -40,6 +56,19 @@ class CombustibleCarga extends Model
     public function vehiculo()
     {
         return $this->belongsTo(Vehiculo::class);
+    }
+
+    /** Nombres de los datos de la bitácora que le faltan a este vale. */
+    public function faltantes(): array
+    {
+        return array_values(array_filter(self::CAMPOS_BITACORA, fn ($nombre, $campo) => blank($this->{$campo}), ARRAY_FILTER_USE_BOTH));
+    }
+
+    /** Vales a los que les falta algún dato de la bitácora. */
+    public function scopeIncompletos($query)
+    {
+        return $query->where(fn ($q) => collect(array_keys(self::CAMPOS_BITACORA))
+            ->each(fn ($campo) => $q->orWhereNull($campo)->when(! in_array($campo, ['litros', 'precio', 'importe', 'fecha_vale'], true), fn ($w) => $w->orWhere($campo, ''))));
     }
 
     /**

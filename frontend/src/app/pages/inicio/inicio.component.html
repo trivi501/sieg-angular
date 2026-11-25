@@ -80,7 +80,12 @@
               </div>
             }
             @for (t of c.tramites_por_validar; track t.tipo) {
-              <div class="text-warning mt-1">{{ t.cantidad }} {{ t.nombre }} por validar</div>
+              <div class="text-warning mt-1">
+                {{ t.cantidad }} {{ t.nombre }} por validar
+                @if (t.falta_generar) {
+                  <span class="text-muted">({{ t.falta_generar }} con suficiencia, falta generar requisición, OC y CLC)</span>
+                }
+              </div>
             }
           </div>
         </div>

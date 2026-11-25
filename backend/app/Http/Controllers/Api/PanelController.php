@@ -90,7 +90,7 @@ class PanelController extends Controller
         $veTodo = $this->veTodasLasSecretarias($user);
         $tramites = TramiteServicio::where('estado', 'por_validar')
             ->when(! $veTodo, fn ($q) => $q->whereIn('id_cat_egreso_unidad_administrativa', $this->unidadesPropias($user) ?: [0]))
-            ->selectRaw('tipo, COUNT(*) AS n')->groupBy('tipo')->pluck('n', 'tipo');
+            ->selectRaw('tipo, COUNT(*) AS n, SUM(suficiencia = 1) AS con_suficiencia')->groupBy('tipo')->get()->keyBy('tipo');
 
         return [
             'en_tramite' => ['cantidad' => $enTramite->count(), 'importe' => round($enTramite->sum(fn ($o) => $o->netoAPagar()), 2)],
@@ -101,7 +101,13 @@ class PanelController extends Controller
                 'importe' => round(($porArea[$area] ?? collect())->sum(fn ($o) => $o->netoAPagar()), 2),
             ])->values(),
             'facturas_sin_clc' => ['cantidad' => $sinClc->count(), 'importe' => round($sinClc->sum(fn ($o) => $o->netoAPagar()), 2)],
-            'tramites_por_validar' => collect(TramiteServicio::TIPOS)->map(fn ($t, $tipo) => ['tipo' => $tipo, 'nombre' => $t['nombre'], 'cantidad' => (int) ($tramites[$tipo] ?? 0)])
+            // falta_generar: ya con suficiencia (paso 1), solo falta generar requisición, OC y CLC (paso 2).
+            'tramites_por_validar' => collect(TramiteServicio::TIPOS)->map(fn ($t, $tipo) => [
+                'tipo' => $tipo,
+                'nombre' => $t['nombre'],
+                'cantidad' => (int) ($tramites[$tipo]->n ?? 0),
+                'falta_generar' => (int) ($tramites[$tipo]->con_suficiencia ?? 0),
+            ])
                 ->filter(fn ($t) => $t['cantidad'] > 0)->values(),
         ];
     }

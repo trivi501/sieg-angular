@@ -38,13 +38,20 @@ class TramiteServicioController extends Controller
         $user = $request->user();
         $query = TramiteServicio::where('tipo', $this->tipo())
             ->with('unidadAdministrativa:id_cat_egreso_unidad_administrativa,clave,nombre', 'requisicion:id_tb_egreso_requisicion,folio_completo')
-            ->withCount('facturas')->withSum('facturas', 'total')->withSum('facturas', 'isr');
+            ->withCount('facturas')->withSum('facturas', 'total')->withSum('facturas', 'isr')
+            // Combustible: vales con datos faltantes (alerta en la lista).
+            ->when($this->tipo() === 'combustible', fn ($q) => $q->withCount(['cargas as vales_incompletos' => fn ($c) => $c->incompletos()]));
 
         if (! $this->veTodos($user)) {
             $query->whereIn('id_cat_egreso_unidad_administrativa', EgresoUnidadAdministrativa::idsMismaClave($user->id_cat_egreso_unidad_administrativa) ?: [0]);
         }
+        // Por validar se divide en: pendiente de suficiencia y ya con suficiencia, falta generar (servicios y combustible).
         if ($estado = $request->input('estado')) {
-            $query->where('estado', $estado);
+            match ($estado) {
+                'falta_generar' => $query->where('estado', 'por_validar')->where('suficiencia', true),
+                'por_validar' => $query->where('estado', 'por_validar')->where(fn ($q) => $q->whereNull('suficiencia')->orWhere('suficiencia', false)),
+                default => $query->where('estado', $estado),
+            };
         }
         if ($buscar = trim((string) $request->input('buscar'))) {
             $like = "%{$buscar}%";
@@ -65,19 +72,20 @@ class TramiteServicioController extends Controller
                 'facturas' => $t->facturas_count,
                 'importe' => round((float) $t->facturas_sum_total + (float) $t->facturas_sum_isr, 2),
                 'estado' => $t->estado,
-                'estado_texto' => TramiteServicio::ESTADOS[$t->estado] ?? $t->estado,
+                'estado_clave' => $t->estadoClave(),
+                'estado_texto' => $t->estadoTexto(),
                 'requisicion_id' => $t->id_tb_egreso_requisicion,
                 'requisicion' => $t->requisicion?->folio_completo,
+                'vales_incompletos' => $t->vales_incompletos ?? null,
             ])->toArray(),
-            'estados' => TramiteServicio::ESTADOS,
+            'estados' => $this->estadosFiltro(),
         ]);
     }
 
     public function store(Request $request): JsonResponse
     {
-        if ($this->tipo() === 'combustible') {
-            return $this->error('Las bitácoras de combustible se crean al cargar el Excel del proveedor.');
-        }
+        // Combustible: la unidad de combustibles (o el área) crea la bitácora del área y le sube los XML.
+        abort_unless($this->puedeCapturar($request->user()), 403);
         $validated = $request->validate([
             'id_cat_egreso_unidad_administrativa' => 'required|integer',
             'concepto' => 'required|string|max:3000',
@@ -116,7 +124,10 @@ class TramiteServicioController extends Controller
         $nombres = PresupuestoEgreso::where('CLAVE', $clave)->get(['PARTIDA', 'NOMBRE_PARTIDA'])
             ->mapWithKeys(fn ($p) => [trim((string) $p->PARTIDA) => trim((string) $p->NOMBRE_PARTIDA)]);
         $proveedor = $fondo ? null : $tramite->proveedor();
-        $editable = $tramite->editable() && $user->can($tramite->permiso('create'));
+        $editable = $tramite->editable() && $this->puedeCapturar($user);
+        // Fondo en revisión: el área corrige las facturas no validadas (y vuelve a solicitar su revisión).
+        $corrige = fn (TramiteServicioFactura $f) => $this->corregible($tramite, $f) && $this->puedeCapturar($user);
+        $hayQueCorregir = $tramite->facturas->contains(fn ($f) => $corrige($f));
         $oc = $tramite->ordenCompra;
         $sinLimite = $fondo ? FondoSinLimite::vigente()?->load('usuario:id,name') : null;
 
@@ -131,7 +142,8 @@ class TramiteServicioController extends Controller
                 'unidad_clave' => $clave,
                 'concepto' => $tramite->concepto,
                 'estado' => $tramite->estado,
-                'estado_texto' => TramiteServicio::ESTADOS[$tramite->estado] ?? $tramite->estado,
+                'estado_clave' => $tramite->estadoClave(),
+                'estado_texto' => $tramite->estadoTexto(),
                 'observaciones' => $tramite->observaciones,
                 'capturo' => $tramite->usuario?->name,
                 'enviado_at' => $tramite->enviado_at?->toIso8601String(),
@@ -192,9 +204,12 @@ class TramiteServicioController extends Controller
                 'comision' => $f->comision,
                 'pdf' => $f->pdf_path !== null,
                 'clasificada' => $f->clasificada($fondo),
+                // El área puede editar o cancelar esta factura (y, si es una no validada, volver a solicitar su revisión).
+                'editable' => $editable || $corrige($f),
+                'solicitar_revision' => $corrige($f),
                 // Fondo: la revisión de Control Presupuestal de esta factura.
                 'revision' => $f->revision,
-                'revision_texto' => $fondo ? (TramiteServicioFactura::REVISIONES[$f->revision] ?? 'Por revisar') : null,
+                'revision_texto' => $tramite->revisaPorFactura() ? (TramiteServicioFactura::REVISIONES[$f->revision] ?? 'Por revisar') : null,
                 'revision_observaciones' => $f->revision_observaciones,
                 'revisada_por' => $f->revisor?->name,
                 'revisada_at' => $f->revisada_at?->toIso8601String(),
@@ -205,19 +220,22 @@ class TramiteServicioController extends Controller
                 ->map(fn ($g, $tipo) => ['tipo' => $tipo ?: null, 'nombre' => TramiteServicio::TIPOS_GASTO_FONDO[$tipo] ?? 'Sin clasificar', 'facturas' => $g->count(),
                     'importe' => round($g->sum(fn ($f) => $f->importe()), 2)])->sortByDesc('importe')->values() : [],
             // Líneas de presupuesto de la secretaría para clasificar (solo mientras se captura).
-            'lineas' => $editable ? app(PresupuestoService::class)->lineas([$clave])
+            'lineas' => $editable || $hayQueCorregir ? app(PresupuestoService::class)->lineas([$clave])
                 ->when(PresupuestoService::restringeCapitulo1000($user), fn ($ls) => $ls->reject(fn ($l) => PresupuestoService::esCapitulo1000($l['partida'])))
                 ->map(fn ($l) => collect($l)->only(['fuente', 'nombre_fuente', 'proyecto', 'nombre_proyecto', 'partida', 'nombre_partida', 'disponible']))
                 ->values() : [],
             'puede' => [
                 'editar' => $editable,
-                'enviar' => $editable,
+                // Combustible: no se envía a validar; el área genera la CLC (suficiencia y generar).
+                'enviar' => $editable && ! $tramite->esCombustible(),
                 // Servicios y combustible: primero la suficiencia; con suficiencia, generar (validar).
-                'suficiencia' => $tramite->requiereSuficienciaPrevia() && $tramite->estado === 'por_validar' && $user->can($tramite->permiso('validar')),
-                'validar' => $tramite->estado === 'por_validar' && $user->can($tramite->permiso('validar'))
+                'suficiencia' => $tramite->esCombustible() ? $this->puedeGenerarCombustible($tramite, $user)
+                    : $tramite->requiereSuficienciaPrevia() && $tramite->estado === 'por_validar' && $user->can($tramite->permiso('validar')),
+                'validar' => ($tramite->esCombustible() ? $this->puedeGenerarCombustible($tramite, $user)
+                    : $tramite->estado === 'por_validar' && $user->can($tramite->permiso('validar')))
                     && (! $tramite->requiereSuficienciaPrevia() || $tramite->suficiencia === true),
                 // Fondo: Control Presupuestal valida o no cada factura antes de validar el fondo.
-                'revisar' => $fondo && $tramite->estado === 'por_validar' && $user->can($tramite->permiso('validar')),
+                'revisar' => $tramite->revisaPorFactura() && $tramite->estado === 'por_validar' && $user->can($tramite->permiso('validar')),
                 'cancelar' => $this->puedeCancelar($tramite, $user),
                 // Fondo validado: al cancelarlo se cancelan también su CLC y su requisición.
                 'cancelar_todo' => $tramite->estado === 'validado',
@@ -236,13 +254,51 @@ class TramiteServicioController extends Controller
             ->selectRaw('factura_folio, MAX(tramite_servicio_factura_id) AS factura_id, COUNT(*) AS tickets, SUM(litros) AS litros, SUM(importe) AS importe, MAX(fecha_factura) AS fecha_factura')
             ->groupBy('factura_folio')->orderBy('factura_folio')->get();
 
+        $importeVales = round((float) $porFactura->sum('importe'), 2);
+        $totalFacturas = round((float) $tramite->facturas->sum('total'), 2);
+
         return [
             'lote_id' => $lote?->id,
-            'periodo' => $lote?->periodo,
+            'periodo' => $lote?->periodo ?? $tramite->concepto,
             'archivo' => $lote?->archivo_nombre,
             'tickets' => (int) $porFactura->sum('tickets'),
             'litros' => round((float) $porFactura->sum('litros'), 3),
-            'importe' => round((float) $porFactura->sum('importe'), 2),
+            'importe' => $importeVales,
+            // Alertas: vales con datos faltantes y diferencia entre las facturas y los vales capturados.
+            'incompletos' => $tramite->cargas()->incompletos()->count(),
+            'total_facturas' => $totalFacturas,
+            'diferencia' => round($totalFacturas - $importeVales, 2),
+            'campos' => \App\Models\CombustibleCarga::CAMPOS_BITACORA,
+            // Captura de vales en cualquier momento (la unidad de combustibles o el área), salvo cancelada.
+            'capturar_vales' => $tramite->estado !== 'cancelado' && request()->user()->canAny(['combustible-cargar', 'combustible-create']),
+            // Conceptos de cada factura (para desplegarlos como vales) y lo que falta de asignar en vales.
+            'por_factura' => $tramite->facturas->map(function (TramiteServicioFactura $f) use ($tramite) {
+                $conceptos = collect($f->conceptos ?? []);
+                $vales = $tramite->cargas()->reorder()->where('tramite_servicio_factura_id', $f->id);
+                $litrosXml = round((float) $conceptos->sum(fn ($c) => (float) ($c['cantidad'] ?? 0)), 3);
+                $montoXml = round($f->total + $f->isr, 2);
+                $litrosVales = round((float) (clone $vales)->sum('litros'), 3);
+                $montoVales = round((float) (clone $vales)->sum('importe'), 2);
+
+                return [
+                    'id' => $f->id,
+                    'folio' => $f->serieFolio() ?? $f->uuid,
+                    'conceptos' => $conceptos->map(fn ($c) => [
+                        'descripcion' => $c['descripcion'] ?? null,
+                        'unidad' => $c['unidad'] ?? null,
+                        'litros' => (float) ($c['cantidad'] ?? 0),
+                        'precio' => (float) ($c['valor_unitario'] ?? 0),
+                        'monto' => round((float) ($c['importe'] ?? 0) - (float) ($c['descuento'] ?? 0) + (float) ($c['iva'] ?? 0) + (float) ($c['ieps'] ?? 0), 2),
+                    ])->values(),
+                    'vales' => (clone $vales)->count(),
+                    'litros_xml' => $litrosXml,
+                    'monto_xml' => $montoXml,
+                    'litros_vales' => $litrosVales,
+                    'monto_vales' => $montoVales,
+                    'pendiente_litros' => round($litrosXml - $litrosVales, 3),
+                    'pendiente_monto' => round($montoXml - $montoVales, 2),
+                ];
+            })->values(),
             'facturas' => $porFactura->map(function ($f) use ($totales) {
                 $xml = $f->factura_id ? $totales->get((int) $f->factura_id) : null;
 
@@ -285,8 +341,7 @@ class TramiteServicioController extends Controller
      */
     public function clasificarFactura(Request $request, TramiteServicio $tramite, TramiteServicioFactura $factura): JsonResponse
     {
-        $this->exigirEditable($tramite);
-        abort_unless($factura->tramite_servicio_id === $tramite->id, 404);
+        $this->exigirFacturaEditable($tramite, $factura);
         $unidad = $tramite->unidadAdministrativa?->clave;
         $existe = fn (?string $fuente, ?string $proyecto, ?string $partida) => app(PresupuestoService::class)
             ->linea(PresupuestoService::clave($unidad, $fuente ?? '', $proyecto ?? '', $partida ?? '')) !== null;
@@ -322,9 +377,13 @@ class TramiteServicioController extends Controller
             }
             $factura->update(['conceptos' => $articulos, 'concepto' => mb_strtoupper(trim($validated['concepto'])), 'tipo_gasto' => $validated['tipo_gasto'],
                 'comision' => $validated['tipo_gasto'] === 'viaticos' ? mb_strtoupper(trim($validated['comision'])) : null]);
-            $factura->reiniciarRevision();
+            // Corrigiendo una no validada (fondo en revisión): sigue así hasta que el área vuelva a solicitar su revisión.
+            if (! $this->corregible($tramite, $factura)) {
+                $factura->reiniciarRevision();
+            }
 
-            return response()->json(['message' => 'Factura '.($factura->serieFolio() ?? $factura->uuid).' clasificada.']);
+            return response()->json(['message' => 'Factura '.($factura->serieFolio() ?? $factura->uuid).' clasificada.'
+                .($this->corregible($tramite, $factura) ? ' Cuando esté lista, vuelve a solicitar su revisión.' : '')]);
         }
 
         $validated = $request->validate([
@@ -340,24 +399,32 @@ class TramiteServicioController extends Controller
             throw ValidationException::withMessages(['partida' => PresupuestoService::MENSAJE_CAPITULO_1000]);
         }
         $factura->update([...$validated, 'concepto' => mb_strtoupper(trim($validated['concepto']))]);
+        // Corrigiendo una no validada: sigue así hasta que el área vuelva a solicitar su revisión.
+        if ($this->corregible($tramite, $factura)) {
+            return response()->json(['message' => 'Factura clasificada. Cuando esté lista, vuelve a solicitar su revisión.']);
+        }
+        $factura->reiniciarRevision();
 
         return response()->json(['message' => 'Factura clasificada.']);
     }
 
     public function quitarFactura(TramiteServicio $tramite, TramiteServicioFactura $factura): JsonResponse
     {
-        $this->exigirEditable($tramite);
-        abort_unless($factura->tramite_servicio_id === $tramite->id, 404);
+        $this->exigirFacturaEditable($tramite, $factura);
+        if ($this->corregible($tramite, $factura) && $tramite->facturas()->count() === 1) {
+            return $this->error('Es la única factura: para no seguir con el trámite, cancélalo.');
+        }
         $rutas = array_filter([$factura->xml_path, $factura->pdf_path]);
         DB::transaction(function () use ($tramite, $factura) {
             $factura->delete();
+            $tramite->reiniciarSuficiencia();
             if (! $tramite->esFondo() && ! $tramite->facturas()->exists()) {
                 $tramite->update(['proveedor_rfc' => null, 'proveedor_nombre' => null]);
             }
         });
         Storage::disk('local')->delete($rutas);
 
-        return response()->json(['message' => 'Factura quitada.']);
+        return response()->json(['message' => 'Factura '.($factura->serieFolio() ?? $factura->uuid).' cancelada: se quitó del trámite (se puede volver a subir en otro).']);
     }
 
     /**
@@ -366,14 +433,20 @@ class TramiteServicioController extends Controller
      */
     public function sustituirXml(Request $request, TramiteServicio $tramite, TramiteServicioFactura $factura, FacturasTramite $facturas): JsonResponse
     {
-        $this->exigirEditable($tramite);
-        abort_unless($factura->tramite_servicio_id === $tramite->id, 404);
+        $this->exigirFacturaEditable($tramite, $factura);
+        $corrigiendo = $this->corregible($tramite, $factura);
+        $observacion = $factura->revision_observaciones;
         $request->validate(['xml' => 'required|file|max:2048'], [], ['xml' => 'factura (XML)']);
         $anterior = $factura->serieFolio() ?? $factura->uuid;
         $rutas = array_filter([$factura->xml_path, $factura->pdf_path]);
         $r = $facturas->agregar($tramite, file_get_contents($request->file('xml')->getRealPath()));
         $factura->delete();
         Storage::disk('local')->delete(array_diff($rutas, array_filter([$r['factura']->xml_path])));
+        // Fondo en revisión: la nueva queda con el área (no validada) hasta que la clasifique y solicite su revisión.
+        if ($corrigiendo) {
+            $tramite->reiniciarSuficiencia();
+            $r['factura']->update(['revision' => 'rechazada', 'revision_observaciones' => "Sustituye a la factura {$anterior}. ".($observacion ?? '')]);
+        }
 
         return response()->json(['id' => $r['factura']->id, 'message' => "Factura {$anterior} sustituida: {$r['message']} Clasifícala.", 'aviso' => $r['aviso']], 201);
     }
@@ -385,10 +458,10 @@ class TramiteServicioController extends Controller
     public function revisarFactura(Request $request, TramiteServicio $tramite, TramiteServicioFactura $factura): JsonResponse
     {
         $this->autorizar($tramite);
-        abort_unless($tramite->esFondo() && $request->user()->can($tramite->permiso('validar')), 403);
+        abort_unless($tramite->revisaPorFactura() && $request->user()->can($tramite->permiso('validar')), 403);
         abort_unless($factura->tramite_servicio_id === $tramite->id, 404);
         if ($tramite->estado !== 'por_validar') {
-            return $this->error('Las facturas se revisan cuando el fondo está enviado a validar.');
+            return $this->error('Las facturas se revisan cuando el trámite está enviado a validar.');
         }
         $validated = $request->validate([
             'revision' => 'required|in:validada,rechazada,pendiente',
@@ -405,12 +478,35 @@ class TramiteServicioController extends Controller
             'revisada_user_id' => $pendiente ? null : $request->user()->id,
         ]);
         $nombre = $factura->serieFolio() ?? $factura->uuid;
+        // Servicios: una factura no validada (o regresada a revisar) invalida la suficiencia ya revisada.
+        if ($validated['revision'] !== 'validada') {
+            $tramite->reiniciarSuficiencia();
+        }
 
         return response()->json(['message' => match ($validated['revision']) {
             'validada' => "Factura {$nombre} validada.",
-            'rechazada' => "Factura {$nombre} no validada; regresa el fondo al área para que la corrija o la quite.",
+            'rechazada' => "Factura {$nombre} no validada: el área puede corregirla, sustituirla o cancelarla y volver a solicitar su revisión.",
             default => "Factura {$nombre} otra vez por revisar.",
         }]);
+    }
+
+    /** Fondo en revisión: el área ya corrigió una factura no validada y vuelve a solicitar que Control Presupuestal la revise. */
+    public function solicitarRevision(TramiteServicio $tramite, TramiteServicioFactura $factura): JsonResponse
+    {
+        $this->exigirFacturaEditable($tramite, $factura);
+        if (! $this->corregible($tramite, $factura)) {
+            return $this->error('Solo se vuelve a solicitar la revisión de una factura no validada de un fondo enviado a validar.');
+        }
+        if (! $factura->clasificada($tramite->esFondo())) {
+            return $this->error($tramite->esFondo()
+                ? 'Antes clasifícala: tipo de gasto (en viáticos, la comisión), concepto y la partida, proyecto y fuente de cada artículo.'
+                : 'Antes clasifícala: partida, proyecto, fuente y concepto.');
+        }
+        $factura->update(['revision' => null, 'revision_observaciones' => null, 'revisada_at' => null, 'revisada_user_id' => null]);
+        $tramite->reiniciarSuficiencia();
+
+        return response()->json(['message' => 'Factura '.($factura->serieFolio() ?? $factura->uuid).' enviada otra vez a revisión'
+            .($tramite->esFondo() ? ' de Control Presupuestal.' : '.')]);
     }
 
     public function descargarXml(TramiteServicio $tramite, TramiteServicioFactura $factura)
@@ -424,13 +520,14 @@ class TramiteServicioController extends Controller
     /** PDF (representación impresa) de una factura del trámite; si ya tenía uno, lo sustituye. */
     public function subirPdf(Request $request, TramiteServicio $tramite, TramiteServicioFactura $factura): JsonResponse
     {
-        $this->exigirEditable($tramite);
-        abort_unless($factura->tramite_servicio_id === $tramite->id, 404);
+        $this->exigirFacturaEditable($tramite, $factura);
         $request->validate(['pdf' => 'required|file|mimes:pdf|max:5120'], ['pdf.mimes' => 'El archivo debe ser un PDF.', 'pdf.max' => 'El PDF puede ser de hasta 5 MB.']);
         $ruta = "tramites-servicio/{$tramite->año}/{$tramite->folio_completo}_{$factura->uuid}.pdf";
         Storage::disk('local')->put($ruta, file_get_contents($request->file('pdf')->getRealPath()));
         $factura->update(['pdf_path' => $ruta]);
-        $factura->reiniciarRevision();
+        if (! $this->corregible($tramite, $factura)) {
+            $factura->reiniciarRevision();
+        }
 
         return response()->json(['message' => 'PDF de la factura guardado.']);
     }
@@ -471,7 +568,7 @@ class TramiteServicioController extends Controller
         }
 
         // Cada envío se revisa de nuevo: la suficiencia anterior ya no cuenta.
-        $tramite->update(['estado' => 'por_validar', 'enviado_at' => now(), 'observaciones' => $fondo ? null : $tramite->observaciones,
+        $tramite->update(['estado' => 'por_validar', 'enviado_at' => now(), 'observaciones' => $tramite->revisaPorFactura() ? null : $tramite->observaciones,
             'suficiencia' => null, 'suficiencia_detalle' => null, 'suficiencia_at' => null, 'suficiencia_user_id' => null]);
 
         return response()->json(['message' => $fondo
@@ -483,14 +580,14 @@ class TramiteServicioController extends Controller
     public function validar(Request $request, TramiteServicio $tramite, GeneradorTramiteServicio $generador): JsonResponse
     {
         $this->autorizar($tramite);
-        abort_unless($request->user()->can($tramite->permiso('validar')), 403);
-        if ($tramite->esFondo() && $tramite->estado === 'por_validar') {
+        abort_unless($tramite->esCombustible() ? $this->puedeGenerarCombustible($tramite, $request->user()) : $request->user()->can($tramite->permiso('validar')), 403);
+        if ($tramite->revisaPorFactura() && $tramite->estado === 'por_validar') {
             $facturas = $tramite->facturas()->get();
             if ($rechazadas = $facturas->where('revision', 'rechazada')->count()) {
-                return $this->error("Hay {$rechazadas} factura(s) no validada(s): regresa el fondo al área para que las corrija o las quite.");
+                return $this->error("Hay {$rechazadas} factura(s) no validada(s): el área tiene que corregirlas o cancelarlas y volver a solicitar su revisión (o regrésale el trámite).");
             }
             if ($pendientes = $facturas->where('revision', '!==', 'validada')->count()) {
-                return $this->error("Falta revisar {$pendientes} factura(s): valida cada factura antes de validar el fondo.");
+                return $this->error("Falta revisar {$pendientes} factura(s): valida cada factura antes de ".($tramite->esFondo() ? 'validar el fondo.' : 'generar la requisición, la orden de compra y la CLC.'));
             }
         }
         $requisicion = $generador->generar($tramite, $request->user());
@@ -510,8 +607,12 @@ class TramiteServicioController extends Controller
     public function suficiencia(Request $request, TramiteServicio $tramite, GeneradorTramiteServicio $generador): JsonResponse
     {
         $this->autorizar($tramite);
-        abort_unless($request->user()->can($tramite->permiso('validar')), 403);
+        abort_unless($tramite->esCombustible() ? $this->puedeGenerarCombustible($tramite, $request->user()) : $request->user()->can($tramite->permiso('validar')), 403);
         abort_unless($tramite->requiereSuficienciaPrevia(), 404);
+        // Servicios: primero se valida cada factura.
+        if ($tramite->revisaPorFactura() && ($faltan = $tramite->facturas()->where(fn ($q) => $q->whereNull('revision')->orWhere('revision', '!=', 'validada'))->count())) {
+            return $this->error("Primero valida cada factura: falta(n) {$faltan} por validar o corregir.");
+        }
         $r = $generador->revisarSuficiencia($tramite, $request->user());
         $faltan = collect($r['partidas'])->where('suficiente', false)
             ->map(fn ($p) => "{$p['partida']} (proy. {$p['proyecto']}, fte. {$p['fuente']}): faltan $".number_format($p['faltante'], 2))->implode('; ');
@@ -530,7 +631,7 @@ class TramiteServicioController extends Controller
             return $this->error('Solo se regresa uno enviado a validar.');
         }
         // Fondo: si ya hay facturas no validadas, sus observaciones bastan (las generales son opcionales).
-        $rechazadas = $tramite->esFondo() ? $tramite->facturas()->where('revision', 'rechazada')->get() : collect();
+        $rechazadas = $tramite->revisaPorFactura() ? $tramite->facturas()->where('revision', 'rechazada')->get() : collect();
         $validated = $request->validate(['observaciones' => ($rechazadas->isEmpty() ? 'required' : 'nullable').'|string|min:5|max:3000'],
             ['observaciones.required' => 'Escribe las observaciones para el área.', 'observaciones.min' => 'Explica qué hay que corregir.']);
         $observaciones = trim((string) ($validated['observaciones'] ?? ''))
@@ -563,7 +664,7 @@ class TramiteServicioController extends Controller
     private function puedeCancelar(TramiteServicio $tramite, $user): bool
     {
         if (in_array($tramite->estado, ['captura', 'rechazado', 'por_validar'], true)) {
-            return $user->can($tramite->permiso('create')) || $user->can($tramite->permiso('validar'));
+            return $this->puedeCapturar($user) || $user->can($tramite->permiso('validar'));
         }
 
         return $tramite->estado === 'validado' && $tramite->esFondo()
@@ -571,6 +672,17 @@ class TramiteServicioController extends Controller
     }
 
     // ----------------------------------------------------------------
+
+    /** Estados para el filtro; en servicios y combustible, además "con suficiencia, falta generar". */
+    private function estadosFiltro(): array
+    {
+        $estados = TramiteServicio::ESTADOS;
+        if (! in_array($this->tipo(), ['servicio', 'combustible'], true)) {
+            return $estados;
+        }
+
+        return array_slice($estados, 0, 2, true) + ['falta_generar' => TramiteServicio::TEXTO_FALTA_GENERAR] + array_slice($estados, 2, null, true);
+    }
 
     /** servicio (rutas /servicios) o fondo (rutas /fondos). */
     private function tipo(): string
@@ -633,12 +745,50 @@ class TramiteServicioController extends Controller
             'No pertenece a tu secretaría.');
     }
 
+    /**
+     * Fondo o viáticos enviado a validar: el área puede corregir (clasificar, sustituir su XML o PDF), cancelar y volver
+     * a solicitar la revisión de una factura que Control Presupuestal no validó, sin que le regresen todo el fondo.
+     */
+    private function corregible(TramiteServicio $tramite, TramiteServicioFactura $factura): bool
+    {
+        return $tramite->revisaPorFactura() && $tramite->estado === 'por_validar' && $factura->revision === 'rechazada';
+    }
+
+    /** Editar una factura: con el trámite en captura o no validado, o (fondo) si es una factura no validada. */
+    private function exigirFacturaEditable(TramiteServicio $tramite, TramiteServicioFactura $factura): void
+    {
+        $this->autorizar($tramite);
+        abort_unless($factura->tramite_servicio_id === $tramite->id, 404);
+        abort_unless($this->puedeCapturar(auth()->user()), 403);
+        if (! $tramite->editable() && ! $this->corregible($tramite, $factura)) {
+            throw ValidationException::withMessages(['tramite' => $tramite->revisaPorFactura() && $tramite->estado === 'por_validar'
+                ? 'Mientras se revisa, solo se corrigen las facturas que no se validaron.'
+                : 'Ya no se puede modificar (está '.mb_strtolower($tramite->estadoTexto()).').']);
+        }
+    }
+
+    /** Captura (crea, sube y clasifica facturas): el permiso -create del tipo; en combustible, también la unidad de combustibles. */
+    private function puedeCapturar($user): bool
+    {
+        return $user->can($this->permiso('create')) || ($this->tipo() === 'combustible' && $user->can('combustible-cargar'));
+    }
+
+    /**
+     * Combustible: cuando ya están sus XML, el área (o la unidad de combustibles) valida la suficiencia y genera la
+     * requisición, la orden de compra y la CLC, sin enviarla a validar. Quien tiene combustible-validar también puede.
+     */
+    private function puedeGenerarCombustible(TramiteServicio $tramite, $user): bool
+    {
+        return $tramite->esCombustible() && in_array($tramite->estado, ['captura', 'rechazado', 'por_validar'], true)
+            && ($this->puedeCapturar($user) || $user->can($tramite->permiso('validar')));
+    }
+
     private function exigirEditable(TramiteServicio $tramite): void
     {
         $this->autorizar($tramite);
-        abort_unless(auth()->user()->can($tramite->permiso('create')), 403);
+        abort_unless($this->puedeCapturar(auth()->user()), 403);
         if (! $tramite->editable()) {
-            throw ValidationException::withMessages(['tramite' => 'Ya no se puede modificar (está '.mb_strtolower(TramiteServicio::ESTADOS[$tramite->estado] ?? $tramite->estado).').']);
+            throw ValidationException::withMessages(['tramite' => 'Ya no se puede modificar (está '.mb_strtolower($tramite->estadoTexto()).').']);
         }
     }
 

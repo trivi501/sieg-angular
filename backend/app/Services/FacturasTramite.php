@@ -43,7 +43,9 @@ class FacturasTramite
             $errores[] = "Todas las facturas del trámite deben ser del mismo proveedor ({$tramite->proveedor_rfc}); esta la emite {$cfdi['rfc_emisor']}.";
         }
         $folio = self::folio($cfdi);
-        if ($tramite->esCombustible() && ! $this->cargasPendientes($tramite, $folio)->exists()) {
+        // Bitácora creada desde el Excel del proveedor (método anterior): solo las facturas de ese Excel. Las bitácoras
+        // nuevas (la unidad de combustibles sube los XML por área) aceptan cualquier factura del proveedor.
+        if ($tramite->esCombustible() && $tramite->combustible_lote_id && ! $this->cargasPendientes($tramite, $folio)->exists()) {
             $errores[] = "La factura {$folio} no está en el Excel del proveedor de esta bitácora (o ya se subió).";
         }
         $estado = $this->verificar($cfdi, $errores);

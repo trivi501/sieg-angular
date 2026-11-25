@@ -28,7 +28,7 @@ class GeneradorTramiteServicio
     {
         return DB::transaction(function () use ($tramite, $user) {
             $tramite = TramiteServicio::whereKey($tramite->id)->lockForUpdate()->first();
-            if ($tramite->estado !== 'por_validar') {
+            if (! $this->listoParaGenerar($tramite)) {
                 throw ValidationException::withMessages(['tramite' => 'Solo se valida un trámite enviado a validar.']);
             }
             // Servicios y combustible: primero se revisa la suficiencia (revisarSuficiencia); se vuelve a comprobar abajo.
@@ -83,8 +83,21 @@ class GeneradorTramiteServicio
      */
     public function revisarSuficiencia(TramiteServicio $tramite, User $user): array
     {
-        if ($tramite->estado !== 'por_validar') {
+        if (! $this->listoParaGenerar($tramite)) {
             throw ValidationException::withMessages(['tramite' => 'La suficiencia se revisa cuando el trámite está enviado a validar.']);
+        }
+        // Combustible: con sus XML ya subidos y clasificados (partida, proyecto, fuente y concepto).
+        if ($tramite->esCombustible()) {
+            $facturas = $tramite->facturas()->get();
+            if ($facturas->isEmpty()) {
+                throw ValidationException::withMessages(['tramite' => 'Primero sube los XML de las facturas de la bitácora.']);
+            }
+            if ($sinClasificar = $facturas->reject(fn ($f) => $f->clasificada())->count()) {
+                throw ValidationException::withMessages(['tramite' => "Falta asignar partida, proyecto, fuente y concepto a {$sinClasificar} factura(s)."]);
+            }
+            if ($impedimento = $tramite->impedimentoProveedor()) {
+                throw ValidationException::withMessages(['proveedor' => $impedimento]);
+            }
         }
         $unidad = (string) $tramite->unidadAdministrativa?->clave;
         $requerido = [];
@@ -139,6 +152,13 @@ class GeneradorTramiteServicio
 
             return implode(', ', $cancelado);
         });
+    }
+
+    /** Enviado a validar; en combustible, también en captura o no validado (el área genera sin enviarlo). */
+    private function listoParaGenerar(TramiteServicio $tramite): bool
+    {
+        return $tramite->estado === 'por_validar'
+            || ($tramite->esCombustible() && in_array($tramite->estado, ['captura', 'rechazado'], true));
     }
 
     private function requisicion(TramiteServicio $tramite, $facturas, User $user): EgresoRequisicion

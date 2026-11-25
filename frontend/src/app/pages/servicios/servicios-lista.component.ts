@@ -6,13 +6,13 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 
 import { erroresDe } from 'src/app/core/api';
 import { money } from 'src/app/core/formato';
-import { AuthService } from 'src/app/core/auth/auth.service';
 import { CanDirective } from 'src/app/core/auth/can.directive';
 import { PaginacionComponent } from '../admin/paginacion.component';
 import { RequisicionesService, UnidadCaptura } from '../requisiciones/requisiciones.service';
 import { AccionComponent } from 'src/app/shared/accion.component';
 import { SelectBusquedaDirective } from 'src/app/shared/select-busqueda.directive';
 import { ListaTramites, NOMBRE_TIPO, RUTA_TIPO, ServiciosService, TipoTramite, claseEstadoTramite } from './servicios.service';
+import { CombustibleService } from '../combustible/combustible.service';
 
 /**
  * Lista de trámites de servicios (data.tipo = 'servicio') o de fondos revolventes (data.tipo = 'fondo'): el área
@@ -24,15 +24,11 @@ import { ListaTramites, NOMBRE_TIPO, RUTA_TIPO, ServiciosService, TipoTramite, c
   template: `
     <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
       <div>
-        @if (combustible && veCargas) {
-          <a routerLink="/combustible" class="small text-muted">← Cargas del proveedor de combustible</a>
-        }
         <h4 class="mb-1">{{ nombre.lista }}</h4>
         <p class="text-muted small mb-0">
           @if (combustible) {
-            Una por secretaría y por carga del Excel del proveedor, con sus tickets y sus facturas (XML). Cada secretaría llena la suya: elige el presupuesto
-            (partida, proyecto y fuente) y el concepto, y solicita la validación. Al validarse, si hay suficiencia, se generan la requisición, la orden de
-            compra y la CLC.
+            La unidad de combustibles crea la bitácora de cada área, le sube los XML de las facturas y llena los datos de los vales (se pueden completar en
+            cualquier momento). Con los XML, cada área asigna el presupuesto y, si hay suficiencia, genera la requisición, la orden de compra y la CLC.
           } @else if (fondo) {
             @if (viatico) {
               Cada área sube las facturas de los viáticos de una comisión (de distintos proveedores, sin límite de monto) y asigna la partida de cada artículo.
@@ -47,9 +43,7 @@ import { ListaTramites, NOMBRE_TIPO, RUTA_TIPO, ServiciosService, TipoTramite, c
           }
         </p>
       </div>
-      @if (!combustible) {
-        <button *appCan="permisoCrear" type="button" class="btn btn-primary" (click)="nuevo.set(!nuevo())" [appAccion]="nombre.nuevo" icono="plus"></button>
-      }
+      <button *appCan="permisoCrear" type="button" class="btn btn-primary" (click)="nuevo.set(!nuevo())" [appAccion]="nombre.nuevo" icono="plus"></button>
     </div>
 
     @if (nuevo()) {
@@ -72,7 +66,7 @@ import { ListaTramites, NOMBRE_TIPO, RUTA_TIPO, ServiciosService, TipoTramite, c
               name="concepto"
               class="form-control"
               maxlength="3000"
-              [placeholder]="viatico ? 'P. ej. Viáticos de la comisión a la Ciudad de México del 12 y 13 de octubre' : fondo ? 'P. ej. Reposición de fondo revolvente de octubre' : 'P. ej. Servicio de mantenimiento de aires acondicionados'"
+              [placeholder]="combustible ? 'P. ej. Combustible de noviembre 2026' : viatico ? 'P. ej. Viáticos de la comisión a la Ciudad de México del 12 y 13 de octubre' : fondo ? 'P. ej. Reposición de fondo revolvente de octubre' : 'P. ej. Servicio de mantenimiento de aires acondicionados'"
               [(ngModel)]="concepto"
               [class.is-invalid]="errores()['concepto']"
             />
@@ -145,7 +139,10 @@ import { ListaTramites, NOMBRE_TIPO, RUTA_TIPO, ServiciosService, TipoTramite, c
                   <td class="text-center">{{ t.facturas }}</td>
                   <td class="text-end font-monospace">{{ money(t.importe) }}</td>
                   <td>
-                    <span class="badge {{ clase(t.estado) }}">{{ t.estado_texto }}</span>
+                    <span class="badge {{ clase(t.estado_clave) }}">{{ t.estado_texto }}</span>
+                    @if (t.vales_incompletos) {
+                      <small class="d-block text-danger">⚠ {{ t.vales_incompletos }} vale(s) incompleto(s)</small>
+                    }
                     @if (t.requisicion) {
                       <small class="d-block text-muted">{{ t.requisicion }}</small>
                     }
@@ -175,6 +172,7 @@ import { ListaTramites, NOMBRE_TIPO, RUTA_TIPO, ServiciosService, TipoTramite, c
 export class ServiciosListaComponent {
   private servicio = inject(ServiciosService);
   private requisiciones = inject(RequisicionesService);
+  private combustibles = inject(CombustibleService);
   private router = inject(Router);
 
   readonly tipo: TipoTramite = inject(ActivatedRoute).snapshot.data['tipo'] ?? 'servicio';
@@ -182,10 +180,10 @@ export class ServiciosListaComponent {
   readonly fondo = this.tipo === 'fondo' || this.tipo === 'viatico';
   readonly viatico = this.tipo === 'viatico';
   readonly combustible = this.tipo === 'combustible';
-  readonly veCargas = inject(AuthService).can(['combustible-cargar', 'combustible-validar']);
   readonly nombre = NOMBRE_TIPO[this.tipo];
   readonly ruta = RUTA_TIPO[this.tipo];
-  readonly permisoCrear = `${this.ruta}-create`;
+  // Combustible: también la unidad de combustibles crea las bitácoras de las áreas.
+  readonly permisoCrear = this.combustible ? ['combustible-create', 'combustible-cargar'] : `${this.ruta}-create`;
   readonly money = money;
   readonly clase = claseEstadoTramite;
 
@@ -204,8 +202,14 @@ export class ServiciosListaComponent {
 
   constructor() {
     this.cargar(1);
-    // Las bitácoras de combustible no se dan de alta aquí (salen del Excel del proveedor).
-    if (this.combustible) return;
+    // Combustible: las secretarías para las que puede crear bitácora (todas, para la unidad de combustibles).
+    if (this.combustible) {
+      this.combustibles.unidades().subscribe((o) => {
+        this.unidades.set(o.unidades as UnidadCaptura[]);
+        this.unidad = o.unidadDefault;
+      });
+      return;
+    }
     this.requisiciones.opciones().subscribe((o) => {
       this.unidades.set(o.unidades);
       this.unidad = o.unidadDefault ?? (o.unidades.length === 1 ? o.unidades[0].id : null);

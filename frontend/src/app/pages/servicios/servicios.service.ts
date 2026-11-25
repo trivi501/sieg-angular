@@ -16,10 +16,12 @@ export const NOMBRE_TIPO: Record<TipoTramite, { lista: string; uno: string; nuev
   servicio: { lista: 'Trámites de servicios', uno: 'Trámite', nuevo: 'Nuevo trámite' },
   fondo: { lista: 'Fondos revolventes', uno: 'Fondo revolvente', nuevo: 'Nuevo fondo revolvente' },
   viatico: { lista: 'Viáticos', uno: 'Viáticos', nuevo: 'Nuevos viáticos' },
-  combustible: { lista: 'Bitácoras de combustible', uno: 'Bitácora de combustible', nuevo: '' }
+  combustible: { lista: 'Bitácoras de combustible', uno: 'Bitácora de combustible', nuevo: 'Nueva bitácora' }
 };
 
 export type EstadoTramite = 'captura' | 'por_validar' | 'rechazado' | 'validado' | 'cancelado';
+/** Para mostrar y filtrar: falta_generar = por validar, ya con suficiencia (falta generar requisición, OC y CLC). */
+export type EstadoClaveTramite = EstadoTramite | 'falta_generar';
 
 export interface FilaTramite {
   id: number;
@@ -32,13 +34,16 @@ export interface FilaTramite {
   facturas: number;
   importe: number;
   estado: EstadoTramite;
+  estado_clave: EstadoClaveTramite;
   estado_texto: string;
   requisicion_id: number | null;
   requisicion: string | null;
+  /** Combustible: vales con datos faltantes (alerta). */
+  vales_incompletos?: number | null;
 }
 
 export interface ListaTramites extends Paginado<FilaTramite> {
-  estados: Record<EstadoTramite, string>;
+  estados: Partial<Record<EstadoClaveTramite, string>>;
 }
 
 export interface ConceptoFactura {
@@ -86,6 +91,10 @@ export interface FacturaTramite {
   /** Ya tiene su PDF (representación impresa). */
   pdf: boolean;
   clasificada: boolean;
+  /** El área puede editarla o cancelarla (en captura, o en un fondo en revisión si no se validó). */
+  editable: boolean;
+  /** Fondo en revisión: no validada; el área la corrige y vuelve a solicitar su revisión. */
+  solicitar_revision: boolean;
   /** Fondo: revisión de Control Presupuestal (null: por revisar). */
   revision: RevisionFactura | null;
   revision_texto: string | null;
@@ -139,6 +148,7 @@ export interface DetalleTramite {
     unidad_clave: string;
     concepto: string;
     estado: EstadoTramite;
+    estado_clave: EstadoClaveTramite;
     estado_texto: string;
     observaciones: string | null;
     capturo: string | null;
@@ -233,6 +243,11 @@ export class ServiciosService {
     return this.http.post<Mensaje>(`${this.api(tipo)}/${id}/facturas/${factura}/xml`, datos);
   }
 
+  /** Fondo en revisión: el área ya corrigió una factura no validada y vuelve a solicitar su revisión. */
+  solicitarRevision(tipo: TipoTramite, id: number, factura: number) {
+    return this.http.post<Mensaje>(`${this.api(tipo)}/${id}/facturas/${factura}/solicitar-revision`, {});
+  }
+
   /** Fondo: Control Presupuestal valida o no una factura (pendiente la regresa a por revisar). */
   revisar(tipo: TipoTramite, id: number, factura: number, revision: RevisionFactura | 'pendiente', observaciones: string | null = null) {
     return this.http.post<Mensaje>(`${this.api(tipo)}/${id}/facturas/${factura}/revisar`, { revision, observaciones });
@@ -263,11 +278,12 @@ export function claseRevision(revision: RevisionFactura | null): string {
 }
 
 /** Color del estado del trámite. */
-export function claseEstadoTramite(estado: EstadoTramite): string {
+export function claseEstadoTramite(estado: EstadoClaveTramite): string {
   return (
     {
       captura: 'bg-light-secondary text-secondary',
       por_validar: 'bg-light-warning text-warning',
+      falta_generar: 'bg-light-info text-info',
       rechazado: 'bg-light-danger text-danger',
       validado: 'bg-light-success text-success',
       cancelado: 'bg-light-dark text-dark'

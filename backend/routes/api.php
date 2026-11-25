@@ -170,6 +170,14 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('facturas/por-asignar/{factura}', [CombustibleController::class, 'quitarPorAsignar'])->whereNumber('factura')->middleware('permission:combustible-cargar');
         Route::get('reporte', [CombustibleController::class, 'reporte'])->middleware('permission:combustible-index');
         Route::get('reporte/excel', [CombustibleController::class, 'reporteExcel'])->middleware('permission:combustible-index');
+        Route::get('unidades', [CombustibleController::class, 'unidades'])->middleware('permission:combustible-cargar|combustible-create');
+        // Vales de la bitácora: la unidad de combustibles (o el área) los captura y completa en cualquier momento.
+        // Conceptos de una factura como vales (y un vale con lo que falte de asignar de la factura).
+        Route::post('{tramite}/facturas/{factura}/desplegar', [CombustibleController::class, 'desplegarConceptos'])->whereNumber(['tramite', 'factura'])->middleware('permission:combustible-cargar|combustible-create');
+        Route::post('{tramite}/facturas/{factura}/vale-pendiente', [CombustibleController::class, 'valePendiente'])->whereNumber(['tramite', 'factura'])->middleware('permission:combustible-cargar|combustible-create');
+        Route::post('{tramite}/vales', [CombustibleController::class, 'agregarVale'])->whereNumber('tramite')->middleware('permission:combustible-cargar|combustible-create');
+        Route::put('{tramite}/vales/{vale}', [CombustibleController::class, 'actualizarVale'])->whereNumber(['tramite', 'vale'])->middleware('permission:combustible-cargar|combustible-create');
+        Route::delete('{tramite}/vales/{vale}', [CombustibleController::class, 'quitarVale'])->whereNumber(['tramite', 'vale'])->middleware('permission:combustible-cargar|combustible-create');
         Route::get('{tramite}/tickets', [CombustibleController::class, 'tickets'])->whereNumber('tramite')->middleware('permission:combustible-index');
         Route::get('{tramite}/bitacora/excel', [CombustibleController::class, 'bitacoraExcel'])->whereNumber('tramite')->middleware('permission:combustible-index');
         Route::get('{tramite}/bitacora/pdf', [CombustibleController::class, 'bitacoraPdf'])->whereNumber('tramite')->middleware('permission:combustible-index');
@@ -183,24 +191,29 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     foreach (['servicios' => 'servicio', 'fondos' => 'fondo', 'viaticos' => 'viatico', 'combustible' => 'combustible'] as $prefijo => $tipo) {
-        Route::prefix($prefijo)->whereNumber(['tramite', 'factura'])->group(function () use ($prefijo, $tipo) {
+        // Combustible: la unidad de combustibles (combustible-cargar) también captura en las bitácoras de todas las áreas, y
+        // el área genera su CLC (suficiencia y generar) sin enviarla a validar.
+        $crea = $prefijo === 'combustible' ? 'combustible-create|combustible-cargar' : "{$prefijo}-create";
+        $genera = $prefijo === 'combustible' ? 'combustible-create|combustible-cargar|combustible-validar' : "{$prefijo}-validar";
+        Route::prefix($prefijo)->whereNumber(['tramite', 'factura'])->group(function () use ($prefijo, $tipo, $crea, $genera) {
             Route::get('', [TramiteServicioController::class, 'index'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-index");
-            Route::post('', [TramiteServicioController::class, 'store'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-create");
+            Route::post('', [TramiteServicioController::class, 'store'])->defaults('tipo', $tipo)->middleware("permission:{$crea}");
             Route::get('{tramite}', [TramiteServicioController::class, 'show'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-index");
-            Route::put('{tramite}', [TramiteServicioController::class, 'update'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-create");
-            Route::post('{tramite}/facturas', [TramiteServicioController::class, 'subirFactura'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-create");
-            Route::put('{tramite}/facturas/{factura}', [TramiteServicioController::class, 'clasificarFactura'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-create");
-            Route::delete('{tramite}/facturas/{factura}', [TramiteServicioController::class, 'quitarFactura'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-create");
-            Route::post('{tramite}/facturas/{factura}/xml', [TramiteServicioController::class, 'sustituirXml'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-create");
+            Route::put('{tramite}', [TramiteServicioController::class, 'update'])->defaults('tipo', $tipo)->middleware("permission:{$crea}");
+            Route::post('{tramite}/facturas', [TramiteServicioController::class, 'subirFactura'])->defaults('tipo', $tipo)->middleware("permission:{$crea}");
+            Route::put('{tramite}/facturas/{factura}', [TramiteServicioController::class, 'clasificarFactura'])->defaults('tipo', $tipo)->middleware("permission:{$crea}");
+            Route::delete('{tramite}/facturas/{factura}', [TramiteServicioController::class, 'quitarFactura'])->defaults('tipo', $tipo)->middleware("permission:{$crea}");
+            Route::post('{tramite}/facturas/{factura}/xml', [TramiteServicioController::class, 'sustituirXml'])->defaults('tipo', $tipo)->middleware("permission:{$crea}");
+            Route::post('{tramite}/facturas/{factura}/solicitar-revision', [TramiteServicioController::class, 'solicitarRevision'])->defaults('tipo', $tipo)->middleware("permission:{$crea}");
             Route::post('{tramite}/facturas/{factura}/revisar', [TramiteServicioController::class, 'revisarFactura'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-validar");
             Route::get('{tramite}/facturas/{factura}/xml', [TramiteServicioController::class, 'descargarXml'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-index");
-            Route::post('{tramite}/facturas/{factura}/pdf', [TramiteServicioController::class, 'subirPdf'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-create");
+            Route::post('{tramite}/facturas/{factura}/pdf', [TramiteServicioController::class, 'subirPdf'])->defaults('tipo', $tipo)->middleware("permission:{$crea}");
             Route::get('{tramite}/facturas/{factura}/pdf', [TramiteServicioController::class, 'descargarPdf'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-index");
-            Route::post('{tramite}/enviar', [TramiteServicioController::class, 'enviar'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-create");
-            Route::post('{tramite}/suficiencia', [TramiteServicioController::class, 'suficiencia'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-validar");
-            Route::post('{tramite}/validar', [TramiteServicioController::class, 'validar'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-validar");
+            Route::post('{tramite}/enviar', [TramiteServicioController::class, 'enviar'])->defaults('tipo', $tipo)->middleware("permission:{$crea}");
+            Route::post('{tramite}/suficiencia', [TramiteServicioController::class, 'suficiencia'])->defaults('tipo', $tipo)->middleware("permission:{$genera}");
+            Route::post('{tramite}/validar', [TramiteServicioController::class, 'validar'])->defaults('tipo', $tipo)->middleware("permission:{$genera}");
             Route::post('{tramite}/rechazar', [TramiteServicioController::class, 'rechazar'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-validar");
-            Route::post('{tramite}/cancelar', [TramiteServicioController::class, 'cancelar'])->defaults('tipo', $tipo)->middleware("permission:{$prefijo}-create|{$prefijo}-validar");
+            Route::post('{tramite}/cancelar', [TramiteServicioController::class, 'cancelar'])->defaults('tipo', $tipo)->middleware("permission:{$crea}|{$prefijo}-validar");
         });
     }
 
