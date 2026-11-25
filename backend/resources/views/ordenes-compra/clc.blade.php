@@ -20,11 +20,12 @@
         .caja { border-bottom: 1px solid #000; border-right: 1px solid #000; border-left: 1px solid #000; font-weight: bold; font-size: 8pt; text-align: center; padding: 2px 3px; }
         .hueco { width: 8px; }
 
-        table.detalle { width: 100%; border-collapse: collapse; margin-top: 6px; }
-        table.detalle th { border: 1px solid #000; font-size: 7pt; font-weight: normal; padding: 1px 2px; text-align: center; vertical-align: middle; }
-        table.detalle td { font-size: 7pt; padding: 2px; text-align: center; vertical-align: top; }
-        table.detalle td.num { text-align: right; white-space: nowrap; }
-        table.detalle tr.ultimo td { border-bottom: 1px solid #000; }
+        table.detalle { width: 100%; border-collapse: collapse; }
+        table.detalle > thead > tr > th { border: 1px solid #000; font-size: 7pt; font-weight: normal; padding: 1px 2px; text-align: center; vertical-align: middle; }
+        table.detalle > tbody > tr > td { font-size: 7pt; padding: 2px; text-align: center; vertical-align: top; }
+        table.detalle > tbody > tr > td.num { text-align: right; white-space: nowrap; }
+        table.detalle > tbody > tr.ultimo > td { border-bottom: 1px solid #000; }
+        table.detalle > thead > tr > th.cabecera { border: none; padding: 0 0 6px 0; text-align: left; font-weight: normal; }
 
         table.cierre { width: 100%; border-collapse: collapse; margin-top: 2px; }
         table.cierre td { font-size: 7.5pt; padding: 1px 2px; vertical-align: top; }
@@ -185,54 +186,58 @@
         {{-- "Página N de M" lo escribe el controlador sobre el PDF --}}
     </div>
 
-    <table class="encabezado">
-        <tr>
-            <td style="width: 118px;"><img class="logo" src="{{ public_path('img/logo_guindo.png') }}" alt="Ayuntamiento de Guadalupe"></td>
-            <td style="width: 12px;"><div class="separador"></div></td>
-            <td class="titulo">Cuenta por liquidar certificada para el<br>registro del ejercicio presupuestario</td>
-            <td class="folio" style="width: 140px; vertical-align: bottom;">{{ $orden->clc_folio_completo }}</td>
-        </tr>
-    </table>
-
-    <table class="datos">
-        <tr>
-            <td class="etiqueta" style="width: 36%;">Unidad Administrativa:</td>
-            <td class="hueco"></td>
-            <td class="etiqueta" style="width: 13%;">Banco:</td>
-            <td class="hueco"></td>
-            <td class="etiqueta" style="width: 20%;">Cuenta:</td>
-            <td class="hueco"></td>
-            <td class="etiqueta">CLABE:</td>
-        </tr>
-        <tr>
-            <td class="caja">{{ mb_strtoupper($unidad?->nombre ?? '—') }}{{ $orden->regidor ? ' — '.mb_strtoupper($orden->nombreRegidor()) : '' }}</td>
-            <td></td>
-            <td class="caja">{{ mb_strtoupper($cuenta?->banco?->descripcion ?? '—') }}</td>
-            <td></td>
-            <td class="caja" style="text-align: center;">{{ $cuenta?->cuenta ?: '—' }}</td>
-            <td></td>
-            <td class="caja">{{ $cuenta?->clabe ?: '—' }}</td>
-        </tr>
-    </table>
-    <table class="datos">
-        <tr>
-            <td class="etiqueta" style="width: 15%;">Clave de la unidad administrativa</td>
-            <td class="hueco"></td>
-            <td class="etiqueta">{{ $orden->sin_factura ? 'Beneficiario:' : 'Proveedor:' }}</td>
-            <td class="hueco"></td>
-            <td class="etiqueta" style="width: 21%;">R.F.C:</td>
-        </tr>
-        <tr>
-            <td class="caja">{{ $unidad?->clave ?? '—' }}</td>
-            <td></td>
-            <td class="caja">{{ mb_strtoupper($orden->aFavorDe() ?? '') }}</td>
-            <td></td>
-            <td class="caja">{{ $proveedor?->rfc ?? '—' }}</td>
-        </tr>
-    </table>
-
+    {{-- El encabezado completo (logo, folio, unidad, banco, proveedor) va en el thead: dompdf lo repite en cada página. --}}
     <table class="detalle">
         <thead>
+            <tr>
+                <th colspan="13" class="cabecera">
+                    <table class="encabezado">
+                        <tr>
+                            <td style="width: 118px;"><img class="logo" src="{{ public_path('img/logo_guindo.png') }}" alt="Ayuntamiento de Guadalupe"></td>
+                            <td style="width: 12px;"><div class="separador"></div></td>
+                            <td class="titulo">Cuenta por liquidar certificada para el<br>registro del ejercicio presupuestario</td>
+                            <td class="folio" style="width: 140px; vertical-align: bottom;">{{ $orden->clc_folio_completo }}</td>
+                        </tr>
+                    </table>
+
+                    <table class="datos">
+                        <tr>
+                            <td class="etiqueta" style="width: 36%;">Unidad Administrativa:</td>
+                            <td class="hueco"></td>
+                            <td class="etiqueta" style="width: 13%;">Banco:</td>
+                            <td class="hueco"></td>
+                            <td class="etiqueta" style="width: 20%;">Cuenta:</td>
+                            <td class="hueco"></td>
+                            <td class="etiqueta">CLABE:</td>
+                        </tr>
+                        <tr>
+                            <td class="caja">{{ mb_strtoupper($unidad?->nombre ?? '—') }}{{ $orden->regidor ? ' — '.mb_strtoupper($orden->nombreRegidor()) : '' }}</td>
+                            <td></td>
+                            <td class="caja">{{ mb_strtoupper($cuenta?->banco?->descripcion ?? '—') }}</td>
+                            <td></td>
+                            <td class="caja" style="text-align: center;">{{ $cuenta?->cuenta ?: '—' }}</td>
+                            <td></td>
+                            <td class="caja">{{ $cuenta?->clabe ?: '—' }}</td>
+                        </tr>
+                    </table>
+                    <table class="datos">
+                        <tr>
+                            <td class="etiqueta" style="width: 15%;">Clave de la unidad administrativa</td>
+                            <td class="hueco"></td>
+                            <td class="etiqueta">{{ $orden->sin_factura ? 'Beneficiario:' : 'Proveedor:' }}</td>
+                            <td class="hueco"></td>
+                            <td class="etiqueta" style="width: 21%;">R.F.C:</td>
+                        </tr>
+                        <tr>
+                            <td class="caja">{{ $unidad?->clave ?? '—' }}</td>
+                            <td></td>
+                            <td class="caja">{{ mb_strtoupper($orden->aFavorDe() ?? '') }}</td>
+                            <td></td>
+                            <td class="caja">{{ $proveedor?->rfc ?? '—' }}</td>
+                        </tr>
+                    </table>
+                </th>
+            </tr>
             <tr>
                 <th rowspan="3" style="width: 8%;">O.C.</th>
                 <th colspan="4">Clasificación presupuestal</th>
