@@ -12,13 +12,22 @@ return new class extends Migration
 {
     public function up(): void
     {
+        // Solo lo que falte (la tabla pudo crearse ya con estas columnas).
         Schema::table('ordenes_compra', function (Blueprint $table) {
-            $table->string('xml_pdf_path')->nullable()->after('xml_path');
+            if (! Schema::hasColumn('ordenes_compra', 'xml_pdf_path')) {
+                $table->string('xml_pdf_path')->nullable()->after('xml_path');
+            }
         });
         Schema::table('tramite_servicio_facturas', function (Blueprint $table) {
-            $table->string('pdf_path')->nullable()->after('xml_path');
-            $table->string('tipo_gasto', 30)->nullable()->after('concepto');
-            $table->text('comision')->nullable()->after('tipo_gasto');
+            if (! Schema::hasColumn('tramite_servicio_facturas', 'pdf_path')) {
+                $table->string('pdf_path')->nullable()->after('xml_path');
+            }
+            if (! Schema::hasColumn('tramite_servicio_facturas', 'tipo_gasto')) {
+                $table->string('tipo_gasto', 30)->nullable()->after('concepto');
+            }
+            if (! Schema::hasColumn('tramite_servicio_facturas', 'comision')) {
+                $table->text('comision')->nullable()->after('tipo_gasto');
+            }
         });
     }
 

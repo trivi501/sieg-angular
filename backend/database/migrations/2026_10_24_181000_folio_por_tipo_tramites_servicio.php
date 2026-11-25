@@ -12,9 +12,15 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('tramites_servicio', function (Blueprint $table) {
-            $table->unique(['tipo', 'año', 'folio'], 'tramites_servicio_tipo_año_folio_unique');
-            $table->dropUnique('tramites_servicio_año_folio_unique');
+        // Solo lo que falte (la tabla pudo crearse ya con el índice nuevo).
+        $indices = collect(Schema::getIndexes('tramites_servicio'))->keyBy('name');
+        Schema::table('tramites_servicio', function (Blueprint $table) use ($indices) {
+            if (! $indices->has('tramites_servicio_tipo_año_folio_unique')) {
+                $table->unique(['tipo', 'año', 'folio'], 'tramites_servicio_tipo_año_folio_unique');
+            }
+            if ($indices->has('tramites_servicio_año_folio_unique')) {
+                $table->dropUnique('tramites_servicio_año_folio_unique');
+            }
         });
     }
 
