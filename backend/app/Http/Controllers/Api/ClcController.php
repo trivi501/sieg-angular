@@ -38,7 +38,7 @@ class ClcController extends Controller
             ->when(! $todas, fn ($q) => $q->where(fn ($w) => $w
                 ->whereIn('clc_estado', $estadosBandeja ?: ['__ninguno__'])
                 ->orWhereHas('requisicion', fn ($r) => $r->whereIn('id_cat_egreso_unidad_administrativa', $propias ?: [0]))))
-            ->with(['regidor:id,titulo,nombre,cargo', 'proveedor:id,nombre', 'requisicion:id_tb_egreso_requisicion,folio_completo,id_cat_egreso_unidad_administrativa,observaciones,beneficiario',
+            ->with(['tramiteServicio:id,tipo', 'regidor:id,titulo,nombre,cargo', 'proveedor:id,nombre', 'requisicion:id_tb_egreso_requisicion,folio_completo,id_cat_egreso_unidad_administrativa,observaciones,beneficiario',
                 'requisicion.catEgresoUnidadAdministrativa:id_cat_egreso_unidad_administrativa,clave,nombre', 'relacionClc:id,folio_completo,origen,destino',
                 'movimientosClc' => fn ($q) => $q->where('accion', 'devolver')->reorder()->latest('id')])
             ->orderByDesc('clc_generada_at')
@@ -73,7 +73,10 @@ class ClcController extends Controller
                 'sat_estatus_cancelacion' => $o->sat_estatus_cancelacion,
                 'sat_efos' => (bool) $o->sat_efos,
                 'sat_verificado_at' => $o->sat_verificado_at?->toIso8601String(),
-                'devolucion' => $o->clc_estado === 'devuelta' ? $o->movimientosClc->first()?->observaciones : null,
+                // Devuelta por Control Presupuestal: a Recursos Materiales o, si va directo, al área (vuelve a "generada").
+                'devolucion' => in_array($o->clc_estado, ['devuelta', 'generada'], true) ? $o->movimientosClc->first()?->observaciones : null,
+                // Fondo revolvente, viáticos o combustible: el área la envía directo a Control Presupuestal.
+                'directo' => TramiteClc::directoACp($o),
                 // Entra en "Seguimiento": todas para quien participa en el trámite; las de su secretaría para los demás.
                 'seguimiento' => $todas || in_array((int) $o->requisicion?->id_cat_egreso_unidad_administrativa, $propias, true),
             ]);

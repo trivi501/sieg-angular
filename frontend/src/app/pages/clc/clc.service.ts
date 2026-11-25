@@ -18,6 +18,8 @@ export interface Clc {
   requisicion: string | null;
   concepto: string | null;
   unidad: string | null;
+  /** Fondo revolvente, viáticos o combustible: el área la envía directo a Control Presupuestal (sin Recursos Materiales). */
+  directo: boolean;
   /** La subió un regidor o su asistente: cargo y nombre del regidor. */
   regidor: string | null;
   relacion: string | null;
@@ -103,6 +105,8 @@ export interface Grupo {
   titulo: string;
   estados: string[];
   acciones: string[];
+  /** Solo las CLC que van (true) o no van (false) directo a Control Presupuestal; sin indicar, todas. */
+  directo?: boolean;
 }
 
 export interface Bandeja {
@@ -118,7 +122,15 @@ export const BANDEJAS: Bandeja[] = [
     clave: 'area',
     titulo: 'Mi área',
     permisos: ['requisiciones-clc'],
-    grupos: [{ titulo: 'CLC generadas — por enviar a Recursos Materiales', estados: ['generada'], acciones: ['enviar_rm'] }]
+    grupos: [
+      { titulo: 'CLC generadas — por enviar a Recursos Materiales', estados: ['generada'], acciones: ['enviar_rm'], directo: false },
+      {
+        titulo: 'Fondos revolventes, viáticos y combustible — por enviar a Control Presupuestal',
+        estados: ['generada'],
+        acciones: ['enviar_cp_area'],
+        directo: true
+      }
+    ]
   },
   {
     clave: 'rm',
@@ -134,7 +146,7 @@ export const BANDEJAS: Bandeja[] = [
     titulo: 'Control Presupuestal',
     permisos: ['clc-control-presupuestal'],
     grupos: [
-      { titulo: 'Por recibir de Recursos Materiales', estados: ['enviada_cp'], acciones: ['recibir_cp'] },
+      { titulo: 'Por recibir (de Recursos Materiales; fondos, viáticos y combustible, del área)', estados: ['enviada_cp'], acciones: ['recibir_cp'] },
       { titulo: 'En revisión — enviar a Sindicatura o devolver', estados: ['recibida_cp'], acciones: ['enviar_sindicatura', 'devolver'] },
       { titulo: 'Por recibir de Sindicatura (firmadas)', estados: ['enviada_cp_firmada'], acciones: ['recibir_cp_firmada'] },
       { titulo: 'Firmadas — por enviar a Egresos', estados: ['recibida_cp_firmada'], acciones: ['enviar_egresos'] }

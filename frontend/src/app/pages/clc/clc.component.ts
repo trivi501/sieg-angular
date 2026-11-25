@@ -112,7 +112,13 @@ export class ClcComponent {
     const d = this.datos();
     // "Mi área": solo las de su secretaría (Admin y Control Presupuestal, todas).
     const soloPropias = this.pestana() === 'area' && !d?.veTodo;
-    return (d?.clcs ?? []).filter((c) => grupo.estados.includes(c.estado) && (!soloPropias || c.seguimiento) && this.coincide(c));
+    return (d?.clcs ?? []).filter(
+      (c) =>
+        grupo.estados.includes(c.estado) &&
+        (grupo.directo === undefined || c.directo === grupo.directo) &&
+        (!soloPropias || c.seguimiento) &&
+        this.coincide(c)
+    );
   }
 
   seguimiento = computed(() =>

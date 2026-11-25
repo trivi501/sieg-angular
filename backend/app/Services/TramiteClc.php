@@ -20,9 +20,15 @@ use Illuminate\Validation\ValidationException;
  *
  *   área (envía las de su secretaría) → Recursos Materiales → Control Presupuestal (revisa;
  *   puede devolver a RM con observaciones) → Sindicatura → Control Presupuestal (firmadas) → Egresos (pago)
+ *
+ * Las CLC de fondos revolventes, viáticos y bitácoras de combustible no pasan por Recursos Materiales: el área las
+ * envía directo a Control Presupuestal, y si este las devuelve regresan al área.
  */
 final class TramiteClc
 {
+    /** Tipos de trámite cuya CLC va del área directo a Control Presupuestal (sin Recursos Materiales). */
+    public const TIPOS_DIRECTO_A_CP = ['fondo', 'viatico', 'combustible'];
+
     public const AREAS = [
         'area' => 'Área solicitante',
         'recursos_materiales' => 'Recursos Materiales',
@@ -57,11 +63,14 @@ final class TramiteClc
      */
     public const ACCIONES = [
         // "propias": el área solo envía las CLC de su secretaría o dirección.
-        'enviar_rm' => ['etiqueta' => 'Enviar a Recursos Materiales', 'de' => ['generada'], 'a' => 'enviada_rm', 'permiso' => 'requisiciones-clc', 'envio' => ['area', 'recursos_materiales'], 'relacion' => false, 'propias' => true],
+        // "directo": solo para las CLC que van (true) o no van (false) directo a Control Presupuestal (directoACp()).
+        'enviar_rm' => ['etiqueta' => 'Enviar a Recursos Materiales', 'de' => ['generada'], 'a' => 'enviada_rm', 'permiso' => 'requisiciones-clc', 'envio' => ['area', 'recursos_materiales'], 'relacion' => false, 'propias' => true, 'directo' => false],
+        'enviar_cp_area' => ['etiqueta' => 'Enviar a Control Presupuestal', 'de' => ['generada'], 'a' => 'enviada_cp', 'permiso' => 'requisiciones-clc', 'envio' => ['area', 'control_presupuestal'], 'relacion' => false, 'propias' => true, 'directo' => true],
         'recibir_rm' => ['etiqueta' => 'Recibir', 'de' => ['enviada_rm'], 'a' => 'recibida_rm', 'permiso' => 'clc-recursos-materiales', 'recibe' => true],
         'enviar_cp' => ['etiqueta' => 'Enviar a Control Presupuestal', 'de' => ['recibida_rm', 'devuelta'], 'a' => 'enviada_cp', 'permiso' => 'clc-recursos-materiales', 'envio' => ['recursos_materiales', 'control_presupuestal'], 'relacion' => false],
         'recibir_cp' => ['etiqueta' => 'Recibir', 'de' => ['enviada_cp'], 'a' => 'recibida_cp', 'permiso' => 'clc-control-presupuestal', 'recibe' => true],
-        'devolver' => ['etiqueta' => 'Devolver a Recursos Materiales', 'de' => ['recibida_cp'], 'a' => 'devuelta', 'permiso' => 'clc-control-presupuestal', 'observaciones' => true],
+        // Las que llegaron directo del área regresan al área (generada), no a Recursos Materiales.
+        'devolver' => ['etiqueta' => 'Devolver con observaciones', 'de' => ['recibida_cp'], 'a' => 'devuelta', 'a_directo' => 'generada', 'permiso' => 'clc-control-presupuestal', 'observaciones' => true],
         'enviar_sindicatura' => ['etiqueta' => 'Enviar a Sindicatura', 'de' => ['recibida_cp'], 'a' => 'enviada_sindicatura', 'permiso' => 'clc-control-presupuestal', 'envio' => ['control_presupuestal', 'sindicatura'], 'relacion' => true],
         'recibir_sindicatura' => ['etiqueta' => 'Recibir', 'de' => ['enviada_sindicatura'], 'a' => 'recibida_sindicatura', 'permiso' => 'clc-sindicatura', 'recibe' => true],
         'enviar_cp_firmada' => ['etiqueta' => 'Enviar a Control Presupuestal', 'de' => ['recibida_sindicatura'], 'a' => 'enviada_cp_firmada', 'permiso' => 'clc-sindicatura', 'envio' => ['sindicatura', 'control_presupuestal'], 'relacion' => true],
@@ -70,6 +79,13 @@ final class TramiteClc
         'recibir_egresos' => ['etiqueta' => 'Recibir', 'de' => ['enviada_egresos'], 'a' => 'recibida_egresos', 'permiso' => 'clc-egresos', 'recibe' => true],
         'pagar' => ['etiqueta' => 'Marcar pagada', 'de' => ['recibida_egresos'], 'a' => 'pagada', 'permiso' => 'ordenes-compra-pagar', 'pago' => true],
     ];
+
+    /** La CLC es de un fondo revolvente, viáticos o bitácora de combustible: va del área directo a Control Presupuestal. */
+    public static function directoACp(OrdenCompra $orden): bool
+    {
+        return $orden->tramite_servicio_id !== null
+            && in_array($orden->tramiteServicio?->tipo, self::TIPOS_DIRECTO_A_CP, true);
+    }
 
     public static function descripcion(?string $estado): string
     {
@@ -117,14 +133,20 @@ final class TramiteClc
         if ($area === null) {
             return $mensaje;
         }
+        $permitidos = self::CANCELA_HASTA[$area];
         if ($area === 'area') {
             $unidad = (int) $user->id_cat_egreso_unidad_administrativa;
             if (! $unidad || $unidad !== (int) $orden->requisicion?->id_cat_egreso_unidad_administrativa) {
                 return 'Esta CLC no es de tu área.';
             }
+            // Directo a Control Presupuestal: el área la cancela hasta que Control Presupuestal la recibe.
+            if (self::directoACp($orden)) {
+                $permitidos[] = 'enviada_cp';
+                $mensaje = "Control Presupuestal ya la recibió ({$paso}): el área ya no puede cancelarla.";
+            }
         }
 
-        return in_array($orden->clc_estado, self::CANCELA_HASTA[$area], true) ? null : $mensaje;
+        return in_array($orden->clc_estado, $permitidos, true) ? null : $mensaje;
     }
 
     /**
@@ -185,7 +207,7 @@ final class TramiteClc
 
         return DB::transaction(function () use ($accion, $config, $ids, $user, $datos) {
             /** @var Collection<int, OrdenCompra> $ordenes */
-            $ordenes = OrdenCompra::with('requisicion')->whereIn('id', $ids)->whereNotNull('clc_folio_completo')->lockForUpdate()->get();
+            $ordenes = OrdenCompra::with('requisicion', 'tramiteServicio:id,tipo')->whereIn('id', $ids)->whereNotNull('clc_folio_completo')->lockForUpdate()->get();
             if ($ordenes->isEmpty() || $ordenes->count() !== count(array_unique($ids))) {
                 throw ValidationException::withMessages(['ordenes' => 'Selecciona al menos una CLC válida.']);
             }
@@ -194,6 +216,16 @@ final class TramiteClc
             if ($fuera->isNotEmpty()) {
                 throw ValidationException::withMessages(['ordenes' => 'Estas CLC ya no están en el paso para "'.$config['etiqueta'].'": '
                     .$fuera->map(fn ($o) => "{$o->clc_folio_completo} (".self::descripcion($o->clc_estado).')')->implode(', ').'. Actualiza la página.']);
+            }
+
+            if (isset($config['directo'])) {
+                $otras = $ordenes->reject(fn ($o) => self::directoACp($o) === $config['directo']);
+                if ($otras->isNotEmpty()) {
+                    throw ValidationException::withMessages(['ordenes' => ($config['directo']
+                        ? 'Solo las CLC de fondos revolventes, viáticos y combustible van directo a Control Presupuestal: '
+                        : 'Las CLC de fondos revolventes, viáticos y combustible no pasan por Recursos Materiales; envíalas a Control Presupuestal: ')
+                        .$otras->pluck('clc_folio_completo')->implode(', ').'.']);
+                }
             }
 
             if ($config['propias'] ?? false) {
@@ -213,14 +245,15 @@ final class TramiteClc
                     }
                 }
 
-                $cambios = ['clc_estado' => $config['a']];
+                $nuevo = isset($config['a_directo']) && self::directoACp($orden) ? $config['a_directo'] : $config['a'];
+                $cambios = ['clc_estado' => $nuevo];
                 if (isset($config['envio'])) {
                     // Envío sin documento (RM → CP, CP → Egresos): ya no hay relación pendiente de recibir.
                     $cambios['clc_relacion_id'] = $relacion?->id;
                 }
                 $orden->update($cambios);
 
-                $this->movimiento($orden, $accion, $anterior, $config['a'], $relacion?->id ?? (($config['recibe'] ?? false) ? $orden->clc_relacion_id : null), $datos['observaciones'] ?? null, $user);
+                $this->movimiento($orden, $accion, $anterior, $nuevo, $relacion?->id ?? (($config['recibe'] ?? false) ? $orden->clc_relacion_id : null), $datos['observaciones'] ?? null, $user);
             }
 
             return $relacion;
