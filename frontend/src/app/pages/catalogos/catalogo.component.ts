@@ -19,6 +19,7 @@ import {
   ResumenImportacion,
   Valor
 } from './catalogos.service';
+import { DialogoService } from '../../shared/dialogo.service';
 
 type Mensaje = { tipo: 'success' | 'danger'; texto: string };
 
@@ -32,6 +33,7 @@ type Mensaje = { tipo: 'success' | 'danger'; texto: string };
   templateUrl: './catalogo.component.html'
 })
 export class CatalogoComponent {
+  private dialogo = inject(DialogoService);
   private servicio = inject(CatalogosService);
   private modal = inject(NgbModal);
 
@@ -130,12 +132,12 @@ export class CatalogoComponent {
 
   // --- Baja y reactivación ---
 
-  cambiarEstado(registro: RegistroCatalogo, activo: boolean): void {
+  async cambiarEstado(registro: RegistroCatalogo, activo: boolean): Promise<void> {
     const singular = this.definicion()?.singular ?? 'registro';
     const pregunta = activo
       ? `¿Reactivar este ${singular}?`
       : `¿Dar de baja este ${singular}? No se borra: deja de ofrecerse en las capturas y se puede reactivar.`;
-    if (!confirm(pregunta)) {
+    if (!(await this.dialogo.confirmar(pregunta, activo ? { aceptar: 'Reactivar' } : { titulo: 'Dar de baja', aceptar: 'Dar de baja', peligro: true }))) {
       return;
     }
     this.servicio.cambiarEstado(this.slug, registro.id, activo).subscribe({

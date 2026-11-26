@@ -10,6 +10,7 @@ import { money } from 'src/app/core/formato';
 import { AccionComponent } from 'src/app/shared/accion.component';
 import { claseEstadoTramite } from '../servicios/servicios.service';
 import { CombustibleService, DetalleLote, litros } from './combustible.service';
+import { DialogoService } from '../../shared/dialogo.service';
 
 type Resultado = { archivo: string; ok: boolean; texto: string; aviso?: string | null };
 
@@ -172,6 +173,7 @@ type Resultado = { archivo: string; ok: boolean; texto: string; aviso?: string |
   `
 })
 export class CombustibleLoteComponent {
+  private dialogo = inject(DialogoService);
   private servicio = inject(CombustibleService);
   private router = inject(Router);
 
@@ -249,12 +251,13 @@ export class CombustibleLoteComponent {
       });
   }
 
-  eliminar(): void {
+  async eliminar(): Promise<void> {
     const l = this.d()!.lote;
     if (
-      !confirm(
-        `¿Eliminar la carga de ${l.periodo} con sus ${this.d()!.bitacoras.length} bitácoras, tickets y XML? Después se puede volver a cargar el Excel.`
-      )
+      !(await this.dialogo.confirmar(
+        `¿Eliminar la carga de ${l.periodo} con sus ${this.d()!.bitacoras.length} bitácoras, tickets y XML? Después se puede volver a cargar el Excel.`,
+        { peligro: true }
+      ))
     )
       return;
     this.servicio.eliminarLote(this.id).subscribe({

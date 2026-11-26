@@ -12,6 +12,7 @@ import { AuthService } from 'src/app/core/auth/auth.service';
 import { PaginacionComponent } from '../admin/paginacion.component';
 import { AccionComponent } from 'src/app/shared/accion.component';
 import { CombustibleService, FacturaPorAsignar, LoteCombustible, PreviaCombustible, litros } from './combustible.service';
+import { DialogoService } from '../../shared/dialogo.service';
 
 type Resultado = { archivo: string; ok: boolean; texto: string; aviso?: string | null };
 
@@ -344,6 +345,7 @@ type Resultado = { archivo: string; ok: boolean; texto: string; aviso?: string |
   `
 })
 export class CombustibleComponent {
+  private dialogo = inject(DialogoService);
   private servicio = inject(CombustibleService);
   private router = inject(Router);
 
@@ -428,8 +430,8 @@ export class CombustibleComponent {
       });
   }
 
-  quitar(f: FacturaPorAsignar): void {
-    if (!confirm(`¿Quitar la factura ${f.folio}? Se borra su XML.`)) return;
+  async quitar(f: FacturaPorAsignar): Promise<void> {
+    if (!(await this.dialogo.confirmar(`¿Quitar la factura ${f.folio}? Se borra su XML.`, { titulo: 'Quitar factura', aceptar: 'Quitar', peligro: true }))) return;
     this.servicio.quitarPorAsignar(f.id).subscribe({
       next: (r) => {
         this.aviso.set({ tipo: 'success', texto: r.message });

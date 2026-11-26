@@ -10,6 +10,7 @@ import { Paginado, erroresDe } from 'src/app/core/api';
 import { AdminService, UsuarioFila } from '../admin.service';
 import { PaginacionComponent } from '../paginacion.component';
 import { AccionComponent } from 'src/app/shared/accion.component';
+import { DialogoService } from '../../../shared/dialogo.service';
 
 @Component({
   selector: 'app-usuarios-lista',
@@ -17,6 +18,7 @@ import { AccionComponent } from 'src/app/shared/accion.component';
   templateUrl: './usuarios-lista.component.html'
 })
 export class UsuariosListaComponent {
+  private dialogo = inject(DialogoService);
   private admin = inject(AdminService);
   protected auth = inject(AuthService);
 
@@ -32,8 +34,8 @@ export class UsuariosListaComponent {
     this.admin.usuarios(page, this.busqueda).subscribe((p) => this.pagina.set(p));
   }
 
-  eliminar(usuario: UsuarioFila): void {
-    if (!confirm(`¿Eliminar al usuario ${usuario.name}? Esta acción no se puede deshacer.`)) {
+  async eliminar(usuario: UsuarioFila): Promise<void> {
+    if (!(await this.dialogo.confirmar(`¿Eliminar al usuario ${usuario.name}? Esta acción no se puede deshacer.`, { peligro: true }))) {
       return;
     }
     this.admin.eliminarUsuario(usuario.id).subscribe({

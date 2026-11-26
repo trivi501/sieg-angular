@@ -12,6 +12,7 @@ import { PaginacionComponent } from '../admin/paginacion.component';
 import { DetalleGasto, LineaGasto, RequisicionesService, RespuestaGasto, abrirBlob, claseEstado } from './requisiciones.service';
 import { SelectBusquedaDirective } from 'src/app/shared/select-busqueda.directive';
 import { AccionComponent } from 'src/app/shared/accion.component';
+import { DialogoService } from '../../shared/dialogo.service';
 
 /**
  * "Ejercicio y control del gasto" (SIEG: requisiciones/Gasto.tsx): saldos por línea de las unidades
@@ -38,6 +39,7 @@ import { AccionComponent } from 'src/app/shared/accion.component';
   `
 })
 export class GastoComponent {
+  private dialogo = inject(DialogoService);
   private servicio = inject(RequisicionesService);
   private presupuesto = inject(PresupuestoService);
   private modal = inject(NgbModal);
@@ -102,8 +104,8 @@ export class GastoComponent {
     });
   }
 
-  correrSaldos(): void {
-    if (!confirm(`¿Correr los saldos de ${this.mes()}? Lo disponible de ${this.datos()?.saldos.mesAnterior ?? 'el mes anterior'} se suma a este mes y queda congelado. Solo se corre una vez por mes.`)) {
+  async correrSaldos(): Promise<void> {
+    if (!(await this.dialogo.confirmar(`¿Correr los saldos de ${this.mes()}? Lo disponible de ${this.datos()?.saldos.mesAnterior ?? 'el mes anterior'} se suma a este mes y queda congelado. Solo se corre una vez por mes.`, { titulo: 'Correr saldos', aceptar: 'Correr saldos' }))) {
       return;
     }
     this.ocupado.set(true);

@@ -9,6 +9,7 @@ import { AccionComponent } from 'src/app/shared/accion.component';
 import { abrirBlob } from '../requisiciones/requisiciones.service';
 import { PadronDatosComponent } from './padron-datos.component';
 import { DatosPadron, DocumentoPadron, FichaPadron, PadronService, claseEstadoPadron } from './padron.service';
+import { DialogoService } from '../../shared/dialogo.service';
 
 type Aviso = { tipo: 'success' | 'danger'; texto: string };
 
@@ -325,6 +326,7 @@ type Aviso = { tipo: 'success' | 'danger'; texto: string };
   `
 })
 export class PadronFichaComponent {
+  private dialogo = inject(DialogoService);
   private servicio = inject(PadronService);
 
   readonly id = Number(inject(ActivatedRoute).snapshot.paramMap.get('id'));
@@ -401,8 +403,8 @@ export class PadronFichaComponent {
     this.servicio.descargarDocumento(this.id, x.id).subscribe((b) => abrirBlob(b, x.nombre_archivo));
   }
 
-  quitar(x: DocumentoPadron): void {
-    if (!confirm(`¿Quitar "${x.tipo_texto}" del expediente?`)) return;
+  async quitar(x: DocumentoPadron): Promise<void> {
+    if (!(await this.dialogo.confirmar(`¿Quitar "${x.tipo_texto}" del expediente?`, { titulo: 'Quitar documento', aceptar: 'Quitar', peligro: true }))) return;
     this.servicio
       .quitarDocumento(this.id, x.id)
       .subscribe({ next: (r) => this.listo(r.message), error: (e: HttpErrorResponse) => this.fallo(e) });

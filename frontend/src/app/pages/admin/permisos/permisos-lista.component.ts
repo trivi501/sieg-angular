@@ -9,6 +9,7 @@ import { AdminService, Permiso } from '../admin.service';
 import { PaginacionComponent } from '../paginacion.component';
 import { AccionComponent } from 'src/app/shared/accion.component';
 import { SelectBusquedaDirective } from 'src/app/shared/select-busqueda.directive';
+import { DialogoService } from '../../../shared/dialogo.service';
 
 /**
  * Permisos con alta y edición en la misma pantalla. Recordatorio de SIEG: un permiso nuevo
@@ -20,6 +21,7 @@ import { SelectBusquedaDirective } from 'src/app/shared/select-busqueda.directiv
   templateUrl: './permisos-lista.component.html'
 })
 export class PermisosListaComponent {
+  private dialogo = inject(DialogoService);
   private admin = inject(AdminService);
 
   pagina = signal<Paginado<Permiso> | null>(null);
@@ -70,8 +72,8 @@ export class PermisosListaComponent {
     });
   }
 
-  eliminar(permiso: Permiso): void {
-    if (!confirm(`¿Eliminar el permiso ${permiso.name}? Se quitará de todos los roles.`)) {
+  async eliminar(permiso: Permiso): Promise<void> {
+    if (!(await this.dialogo.confirmar(`¿Eliminar el permiso ${permiso.name}? Se quitará de todos los roles.`, { peligro: true }))) {
       return;
     }
     this.admin.eliminarPermiso(permiso.id).subscribe({

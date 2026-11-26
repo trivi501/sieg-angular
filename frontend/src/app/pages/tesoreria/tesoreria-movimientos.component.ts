@@ -11,6 +11,7 @@ import { AccionComponent } from 'src/app/shared/accion.component';
 import { PaginacionComponent } from '../admin/paginacion.component';
 import { abrirBlob } from '../requisiciones/requisiciones.service';
 import { CuentaTesoreria, Movimiento, TesoreriaService } from './tesoreria.service';
+import { DialogoService } from '../../shared/dialogo.service';
 
 /**
  * Movimientos del estado de cuenta de las cuentas del Ayuntamiento: captura uno por uno o con la plantilla de Excel,
@@ -299,6 +300,7 @@ import { CuentaTesoreria, Movimiento, TesoreriaService } from './tesoreria.servi
   `
 })
 export class TesoreriaMovimientosComponent {
+  private dialogo = inject(DialogoService);
   private servicio = inject(TesoreriaService);
 
   readonly money = money;
@@ -380,8 +382,8 @@ export class TesoreriaMovimientosComponent {
     });
   }
 
-  eliminar(m: Movimiento): void {
-    if (!confirm(`¿Eliminar el ${m.tipo} del ${m.fecha} por ${money(m.importe)}?`)) return;
+  async eliminar(m: Movimiento): Promise<void> {
+    if (!(await this.dialogo.confirmar(`¿Eliminar el ${m.tipo} del ${m.fecha} por ${money(m.importe)}?`, { peligro: true }))) return;
     this.servicio.eliminarMovimiento(m.id).subscribe({
       next: (r) => {
         this.aviso.set({ tipo: 'success', texto: r.message });

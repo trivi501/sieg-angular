@@ -27,6 +27,7 @@ import {
   claseRevision
 } from './servicios.service';
 import { CombustibleService, DatosVale, TicketCombustible, litros } from '../combustible/combustible.service';
+import { DialogoService } from '../../shared/dialogo.service';
 
 /** Vale nuevo, sin datos. */
 const valeVacio = (): DatosVale => ({
@@ -91,6 +92,7 @@ type LineaArticulo = { partida: string; proyecto: string; fuente: string };
   `
 })
 export class ServicioDetalleComponent {
+  private dialogo = inject(DialogoService);
   private servicio = inject(ServiciosService);
   private combustibles = inject(CombustibleService);
   private requisiciones = inject(RequisicionesService);
@@ -484,9 +486,9 @@ export class ServicioDetalleComponent {
     });
   }
 
-  /** confirmado: ya se confirmó en la ventana del fondo (sin el cuadro del navegador). */
-  quitar(f: FacturaTramite, confirmado = false): void {
-    if (!confirmado && !confirm(`¿Quitar la factura ${f.serie_folio ?? f.uuid} del trámite?`)) return;
+  /** confirmado: ya se confirmó en la ventana de la factura (sin volver a preguntar). */
+  async quitar(f: FacturaTramite, confirmado = false): Promise<void> {
+    if (!confirmado && !(await this.dialogo.confirmar(`¿Quitar la factura ${f.serie_folio ?? f.uuid} del trámite?`, { titulo: 'Quitar factura', aceptar: 'Quitar', peligro: true }))) return;
     const desde = this.posicion();
     this.servicio.quitarFactura(this.tipo, this.id, f.id).subscribe({
       next: (r) => {
@@ -545,9 +547,16 @@ export class ServicioDetalleComponent {
 
   // --- Trámite ---
 
-  ejecutar(accion: AccionTramite): void {
+  async ejecutar(accion: AccionTramite): Promise<void> {
     const genera = this.fondo ? 'la requisición (con su suficiencia) y la CLC a favor del trabajador' : 'la requisición, la orden de compra y la CLC';
-    if (accion === 'validar' && !confirm(this.fondo ? `Al validarlo se generan ${genera}. ¿Validar?` : `Se generan ${genera}. ¿Generar?`)) return;
+    if (
+      accion === 'validar' &&
+      !(await this.dialogo.confirmar(this.fondo ? `Al validarlo se generan ${genera}. ¿Validar?` : `Se generan ${genera}. ¿Generar?`, {
+        titulo: this.fondo ? 'Validar' : 'Generar',
+        aceptar: this.fondo ? 'Validar' : 'Generar',
+      }))
+    )
+      return;
     const datos = accion === 'rechazar' ? { observaciones: this.observaciones } : accion === 'cancelar' ? { motivo: this.motivo } : {};
     this.ocupado.set(true);
     this.servicio.accion(this.tipo, this.id, accion, datos).subscribe({
@@ -660,8 +669,8 @@ export class ServicioDetalleComponent {
     this.accionVale(this.combustibles.actualizarVale(this.id, v.id, this.edicion[v.id]));
   }
 
-  quitarVale(v: TicketCombustible): void {
-    if (!confirm(`¿Quitar el vale ${v.vale ?? 'sin número'} de la bitácora?`)) return;
+  async quitarVale(v: TicketCombustible): Promise<void> {
+    if (!(await this.dialogo.confirmar(`¿Quitar el vale ${v.vale ?? 'sin número'} de la bitácora?`, { titulo: 'Quitar vale', aceptar: 'Quitar', peligro: true }))) return;
     this.accionVale(this.combustibles.quitarVale(this.id, v.id));
   }
 

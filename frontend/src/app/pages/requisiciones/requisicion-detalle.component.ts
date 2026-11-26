@@ -10,6 +10,7 @@ import { money } from 'src/app/core/formato';
 import { DetalleRequisicion, RequisicionesService, abrirBlob, claseEstado } from './requisiciones.service';
 import { AvisoOrden, OrdenCompraComponent } from './orden-compra.component';
 import { AccionComponent } from 'src/app/shared/accion.component';
+import { DialogoService } from '../../shared/dialogo.service';
 
 /** Acción del trámite que se confirma en el diálogo. */
 interface Accion {
@@ -37,6 +38,7 @@ interface Accion {
   `
 })
 export class RequisicionDetalleComponent {
+  private dialogo = inject(DialogoService);
   private servicio = inject(RequisicionesService);
   private modal = inject(NgbModal);
   private router = inject(Router);
@@ -203,8 +205,8 @@ export class RequisicionDetalleComponent {
     this.cargar();
   }
 
-  eliminar(): void {
-    if (!confirm('¿Eliminar esta requisición? Se borra con sus conceptos (queda en la bitácora de auditoría).')) {
+  async eliminar(): Promise<void> {
+    if (!(await this.dialogo.confirmar('¿Eliminar esta requisición? Se borra con sus conceptos (queda en la bitácora de auditoría).', { peligro: true }))) {
       return;
     }
     this.servicio.eliminar(this.id).subscribe({

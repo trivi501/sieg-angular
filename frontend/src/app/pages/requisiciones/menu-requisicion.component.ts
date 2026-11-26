@@ -6,6 +6,7 @@ import { IconDirective, IconService } from '@ant-design/icons-angular';
 import { erroresDe } from 'src/app/core/api';
 import { ICONOS_ACCION } from 'src/app/shared/accion.component';
 import { DetalleRequisicion, RequisicionesService, abrirBlob } from './requisiciones.service';
+import { DialogoService } from '../../shared/dialogo.service';
 
 /** Opción del menú: navega, descarga o ejecuta algo; "grupo" separa las secciones. */
 interface Opcion {
@@ -57,6 +58,7 @@ interface Opcion {
   `
 })
 export class MenuRequisicionComponent {
+  private dialogo = inject(DialogoService);
   private servicio = inject(RequisicionesService);
   private router = inject(Router);
 
@@ -173,8 +175,8 @@ export class MenuRequisicionComponent {
     });
   }
 
-  private eliminar(id: number): void {
-    if (!confirm('¿Eliminar esta requisición? Se borra con sus conceptos (queda en la bitácora de auditoría).')) {
+  private async eliminar(id: number): Promise<void> {
+    if (!(await this.dialogo.confirmar('¿Eliminar esta requisición? Se borra con sus conceptos (queda en la bitácora de auditoría).', { peligro: true }))) {
       return;
     }
     this.servicio.eliminar(id).subscribe({

@@ -7,6 +7,7 @@ import { CanDirective } from 'src/app/core/auth/can.directive';
 import { erroresDe } from 'src/app/core/api';
 import { AdminService, RolFila } from '../admin.service';
 import { AccionComponent } from 'src/app/shared/accion.component';
+import { DialogoService } from '../../../shared/dialogo.service';
 
 @Component({
   selector: 'app-roles-lista',
@@ -55,6 +56,7 @@ import { AccionComponent } from 'src/app/shared/accion.component';
   `
 })
 export class RolesListaComponent {
+  private dialogo = inject(DialogoService);
   private admin = inject(AdminService);
 
   roles = signal<RolFila[]>([]);
@@ -68,9 +70,9 @@ export class RolesListaComponent {
     this.admin.roles().subscribe((r) => this.roles.set(r));
   }
 
-  eliminar(rol: RolFila): void {
+  async eliminar(rol: RolFila): Promise<void> {
     const aviso = rol.users_count ? ` Lo tienen ${rol.users_count} usuario(s), que perderán sus permisos.` : '';
-    if (!confirm(`¿Eliminar el rol ${rol.name}?${aviso}`)) {
+    if (!(await this.dialogo.confirmar(`¿Eliminar el rol ${rol.name}?${aviso}`, { peligro: true }))) {
       return;
     }
     this.admin.eliminarRol(rol.id).subscribe({

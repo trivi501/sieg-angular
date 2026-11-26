@@ -10,6 +10,7 @@ import { money } from 'src/app/core/formato';
 import { PaginacionComponent } from '../admin/paginacion.component';
 import { PresupuestoService, RespuestaPresupuesto } from './presupuesto.service';
 import { AccionComponent } from 'src/app/shared/accion.component';
+import { DialogoService } from '../../shared/dialogo.service';
 
 type Mensaje = { tipo: 'success' | 'danger' | 'warning'; texto: string };
 
@@ -37,6 +38,7 @@ type Mensaje = { tipo: 'success' | 'danger' | 'warning'; texto: string };
   `
 })
 export class PresupuestoListaComponent {
+  private dialogo = inject(DialogoService);
   private servicio = inject(PresupuestoService);
   private modal = inject(NgbModal);
 
@@ -92,18 +94,19 @@ export class PresupuestoListaComponent {
     return this.descuadradas || Object.values(this.filtros).some((v) => !!v);
   }
 
-  correrSaldos(): void {
-    if (!confirm(`¿Correr los saldos de ${this.datos()?.mesActual}? Lo disponible del mes anterior se suma a este mes y queda congelado. Solo se corre una vez por mes.`)) {
+  async correrSaldos(): Promise<void> {
+    if (!(await this.dialogo.confirmar(`¿Correr los saldos de ${this.datos()?.mesActual}? Lo disponible del mes anterior se suma a este mes y queda congelado. Solo se corre una vez por mes.`, { titulo: 'Correr saldos', aceptar: 'Correr saldos' }))) {
       return;
     }
     this.accion(this.servicio.correrSaldos());
   }
 
-  eliminarTodo(): void {
-    if (!confirm('¿Eliminar TODO el presupuesto? Se borran todas las líneas (quedan en la bitácora). Las modificaciones se conservan por clave de línea.')) {
-      return;
-    }
-    if (prompt('Escribe ELIMINAR para confirmar.') !== 'ELIMINAR') {
+  async eliminarTodo(): Promise<void> {
+    const ok = await this.dialogo.confirmar(
+      '¿Eliminar TODO el presupuesto? Se borran todas las líneas (quedan en la bitácora). Las modificaciones se conservan por clave de línea.',
+      { titulo: 'Eliminar todo el presupuesto', aceptar: 'Eliminar todo', peligro: true, escribir: 'ELIMINAR' }
+    );
+    if (!ok) {
       return;
     }
     this.accion(this.servicio.eliminarTodo());
